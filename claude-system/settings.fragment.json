@@ -7,6 +7,14 @@
           { "type": "command", "command": "{{HOOK_CMD_SESSION_START}}" }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "{{HOOK_CMD_STOP}}" }
+        ]
+      }
     ]
   }
 }
