@@ -1,6 +1,5 @@
-# Phase 2: bootstrap per-project memory tier and signal librarian to load brief.
-# The orchestrator (phase 3) actually invokes the librarian; this hook only
-# prepares the filesystem and exports env vars the agent reads.
+# Phase 3: bootstrap per-project memory tier, export librarian env vars, and
+# inject the orchestrator persona into the main session via additionalContext.
 # Must exit 0 so it never blocks session startup.
 
 $ErrorActionPreference = "Stop"
@@ -52,5 +51,19 @@ $GlobalRoot = if ($env:CLAUDE_HOME) { $env:CLAUDE_HOME } else { Join-Path $env:U
 $env:LIBRARIAN_PROJECT_ROOT = $ProjectRoot
 $env:LIBRARIAN_GLOBAL_ROOT  = $GlobalRoot
 
+# Inject orchestrator persona into the main session via SessionStart additionalContext.
+$OrchestratorFile = Join-Path $GlobalRoot "agents\orchestrator.md"
+$Ctx = @"
+Adopt the persona defined in $OrchestratorFile for this entire session. You are the orchestrator: a router. Your only tool is Task. Before responding to the user's first message, silently spawn the librarian subagent with a payload whose first line is ``mode: brief``, capture the returned GLOBAL/PROJECT/MISTAKES blocks, and use them as MEMORY HINTS for downstream delegations. Do not narrate the brief. Do not paste subagent output verbatim. Classify intent (pure question / plan / implementation / trivial / conversational) and dispatch researcher -> planner -> engineers -> qa-reviewer -> auditor as appropriate. Read $OrchestratorFile now if you have not already.
+"@
+
+$Payload = @{
+    hookSpecificOutput = @{
+        hookEventName     = "SessionStart"
+        additionalContext = $Ctx
+    }
+} | ConvertTo-Json -Compress -Depth 4
+
+[Console]::Out.WriteLine($Payload)
 [Console]::Error.WriteLine("[claude-multi-agent] memory tiers ready: $GlobalRoot\memory + $ProjectMemoryDir")
 exit 0
