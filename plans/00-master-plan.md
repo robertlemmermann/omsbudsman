@@ -26,8 +26,11 @@ A globally-installable, persistent, self-improving multi-agent system for Claude
 | `qa-reviewer` | Gates engineering output before orchestrator accepts it. | sonnet |
 | `auditor` | Final gate before user handback. Verifies original requirements met. | sonnet |
 
-## Directory layout (after install)
+## Directory layout
 
+The team itself (agents + hooks) is installed **globally only**. Memory is **split**: cross-project learning lives globally; project-specific learning lives in the project directory.
+
+### Global — `~/.claude/` (installed once per machine)
 ```
 ~/.claude/
 ├── agents/                       # Claude Code auto-discovers these
@@ -46,18 +49,30 @@ A globally-installable, persistent, self-improving multi-agent system for Claude
 │   ├── user-prompt-submit.sh / .ps1
 │   ├── subagent-stop.sh / .ps1
 │   └── stop.sh / .ps1
-├── memory/
+├── memory/                       # cross-project learning
 │   ├── INDEX.md                  # librarian-maintained map
-│   ├── facts/global.md           # cross-project truths
-│   ├── projects/<repo-hash>.md   # per-repo knowledge
-│   ├── decisions/<date>.md       # decision log
+│   ├── facts.md                  # global truths, preferences
+│   ├── decisions.md              # cross-project decision log
 │   └── mistakes/
 │       ├── INDEX.md              # tag → file map
-│       └── <topic>.md            # prevention rules
-├── metrics/                      # optional token telemetry
-│   └── sessions.jsonl
-└── settings.json                 # registers hooks, may be merged with user's existing
+│       └── <topic>.md            # prevention rules (general)
+├── metrics/
+│   └── sessions.jsonl            # optional token telemetry
+└── settings.json                 # registers hooks (merged with user's existing)
 ```
+
+### Per-project — `<repo>/.claude/memory/` (created on first session in repo)
+```
+<repo>/.claude/memory/
+├── INDEX.md                      # librarian-maintained map for this project
+├── project.md                    # stack, conventions, gotchas, architecture notes
+├── decisions.md                  # project-specific decision log
+└── mistakes/
+    ├── INDEX.md
+    └── <topic>.md                # prevention rules (project-specific)
+```
+
+The librarian decides where each fact/mistake belongs: project-specific (this codebase's quirks) → local; cross-cutting (general Claude behavior, language idioms) → global. Default `.gitignore` snippet provided so projects can choose whether to commit their `.claude/memory/`.
 
 ## Repo layout (this repo, the installer source)
 
@@ -122,12 +137,12 @@ Orchestrator never opens files itself. It dispatches and synthesizes.
 9. **No preambles** — agent prompts forbid "Sure, I'll…" filler.
 10. **Telemetry** — `metrics/sessions.jsonl` lets us measure tokens-per-task and tighten over time.
 
-## Decisions (tentative, confirm before relevant phase)
+## Decisions (locked in)
 
-- **Memory format:** Markdown with YAML frontmatter. Human-readable, structured enough for librarian.
-- **Retrospective trigger sensitivity:** Start strict — only explicit signals like "that's wrong", "you missed", "should have been", "actually no", "broken because", "fix this". Tune later.
-- **Project identity:** SHA-256 hash of `git config --get remote.origin.url` (truncated 12 chars). Falls back to cwd basename hash if no git remote.
-- **Per-project override:** Yes — if `<repo>/.claude/agents/<name>.md` exists, it overrides the global. Standard Claude Code behavior; we just document it.
+- **Memory format:** Pure Markdown. Human-readable and human-editable. Librarian uses headings + bullet structure for organization, no frontmatter.
+- **Retrospective trigger sensitivity:** **Broad.** Trigger on any correction signal. **Repeat mistakes are amplified** — if a mistake matches an existing prevention rule in `mistakes/`, the retrospective flags it as a recurrence and escalates (rule sharpened, agent's pre-flight checklist updated, repeat counter incremented).
+- **Project identity:** Two-tier. The team is global (`~/.claude/`). Memory is split: global memory in `~/.claude/memory/` for cross-project learning; project-specific memory in `<repo>/.claude/memory/` for codebase-specific learning. Librarian routes new facts to the correct tier based on scope.
+- **Agent overrides:** No per-project agents. The team is global-only so behavior is consistent across every project. Only memory is project-scoped.
 
 ## Build phases
 
