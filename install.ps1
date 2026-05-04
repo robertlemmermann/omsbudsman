@@ -23,6 +23,7 @@ if (Test-Path $ClaudeHome) {
 New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "agents") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "hooks")  | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "memory") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "state")  | Out-Null
 
 Write-Host "Installing agents..."
 Copy-Item -Path (Join-Path $SourceDir "agents\*.md") -Destination (Join-Path $ClaudeHome "agents") -Force
@@ -38,12 +39,17 @@ if (-not (Test-Path $MemoryIndex)) {
     Write-Host "Preserving existing memory at $($ClaudeHome)\memory\"
 }
 
-# Resolve hook command path for Windows.
+# Resolve hook command paths for Windows.
 $SessionStartPs1 = Join-Path $ClaudeHome "hooks\session-start.ps1"
 $SessionStartCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$SessionStartPs1`""
 
+$StopPs1 = Join-Path $ClaudeHome "hooks\stop.ps1"
+$StopCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$StopPs1`""
+
 $FragmentRaw      = Get-Content -Raw -Path (Join-Path $SourceDir "settings.fragment.json")
-$FragmentResolved = $FragmentRaw -replace "\{\{HOOK_CMD_SESSION_START\}\}", ($SessionStartCmd -replace '\\', '\\\\')
+$FragmentResolved = $FragmentRaw `
+    -replace "\{\{HOOK_CMD_SESSION_START\}\}", ($SessionStartCmd -replace '\\', '\\\\') `
+    -replace "\{\{HOOK_CMD_STOP\}\}",          ($StopCmd         -replace '\\', '\\\\')
 
 Write-Host "Merging settings..."
 $Settings = $null

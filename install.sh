@@ -24,7 +24,7 @@ if [ -d "$CLAUDE_HOME" ]; then
   cp -R "$CLAUDE_HOME" "$BACKUP_DIR"
 fi
 
-mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/hooks" "$CLAUDE_HOME/memory"
+mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/hooks" "$CLAUDE_HOME/memory" "$CLAUDE_HOME/state"
 
 echo "Installing agents..."
 cp "$SOURCE_DIR/agents/"*.md "$CLAUDE_HOME/agents/"
@@ -46,7 +46,10 @@ FRAGMENT_RESOLVED="$(mktemp)"
 trap 'rm -f "$FRAGMENT_RESOLVED"' EXIT
 
 HOOK_CMD_SESSION_START="$CLAUDE_HOME/hooks/session-start.sh"
-sed "s|{{HOOK_CMD_SESSION_START}}|$HOOK_CMD_SESSION_START|g" "$FRAGMENT_RAW" > "$FRAGMENT_RESOLVED"
+HOOK_CMD_STOP="$CLAUDE_HOME/hooks/stop.sh"
+sed -e "s|{{HOOK_CMD_SESSION_START}}|$HOOK_CMD_SESSION_START|g" \
+    -e "s|{{HOOK_CMD_STOP}}|$HOOK_CMD_STOP|g" \
+    "$FRAGMENT_RAW" > "$FRAGMENT_RESOLVED"
 
 echo "Merging settings..."
 python3 - "$SETTINGS" "$FRAGMENT_RESOLVED" <<'PY'
