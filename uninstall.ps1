@@ -34,6 +34,14 @@ Get-ChildItem (Join-Path $SourceDir "hooks") | ForEach-Object {
     if (Test-Path $target) { Remove-Item -Force $target }
 }
 
+if (Test-Path (Join-Path $SourceDir "scripts")) {
+    Write-Host "Removing our scripts..."
+    Get-ChildItem (Join-Path $SourceDir "scripts") | ForEach-Object {
+        $target = Join-Path $ClaudeHome "scripts\$($_.Name)"
+        if (Test-Path $target) { Remove-Item -Force $target }
+    }
+}
+
 $SettingsPath = Join-Path $ClaudeHome "settings.json"
 if (Test-Path $SettingsPath) {
     Write-Host "Cleaning settings entries..."
@@ -75,6 +83,9 @@ if (Test-Path $SettingsPath) {
 }
 
 Write-Host "Memory preserved at $($ClaudeHome)\memory\"
+if (Test-Path (Join-Path $ClaudeHome "metrics")) {
+    Write-Host "Metrics preserved at $($ClaudeHome)\metrics\"
+}
 Write-Host ""
 Write-Host "Uninstall complete."
 Write-Host "  Backup: $PreuninstallDir"

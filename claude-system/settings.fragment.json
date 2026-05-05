@@ -16,6 +16,14 @@
         ]
       }
     ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "{{HOOK_CMD_SUBAGENT_STOP}}" }
+        ]
+      }
+    ],
     "Stop": [
       {
         "matcher": "*",
