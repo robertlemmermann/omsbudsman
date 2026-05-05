@@ -2,7 +2,7 @@
 
 A globally-installable, persistent, self-improving multi-agent system for Claude Code. Lives in `~/.claude/`, works across any session, on any project, on macOS and Windows.
 
-**Status:** phase 4 — full agent loop wired (orchestrator → researcher → planner → frontend/backend/test engineers → qa-reviewer → auditor) with a Stop-hook auditor gate. Retrospective and telemetry land in phases 5–6. See `plans/00-master-plan.md` for the full architecture and `plans/0N-*.md` for each phase.
+**Status:** phase 5 — full agent loop with retrospective + mistake-learning self-improvement. Telemetry lands in phase 6. See `plans/00-master-plan.md` for the full architecture and `plans/0N-*.md` for each phase.
 
 ## Install
 
@@ -126,5 +126,5 @@ omsbudsman/
 | 2. Librarian + memory | ✅ implemented | `plans/02-librarian-and-memory.md` |
 | 3. Orchestrator + researcher + planner | ✅ implemented | `plans/03-orchestrator-research-planner.md` |
 | 4. Engineers + QA + auditor | ✅ implemented | `plans/04-engineers-qa-auditor.md` |
-| 5. Retrospective + mistake learning | planned | `plans/05-retrospective-mistake-learning.md` |
+| 5. Retrospective + mistake learning | ✅ implemented | `plans/05-retrospective-mistake-learning.md` |
 | 6. Cost telemetry + tuning | planned | `plans/06-cost-telemetry-tuning.md` |

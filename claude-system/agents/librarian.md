@@ -65,8 +65,8 @@ Steps:
    - Increment a `Recurrences:` counter on the matching entry (default 1 if absent → 2).
    - Update its `Last seen:` to today's date (UTC, YYYY-MM-DD).
    - For mistakes: if the new entry has a sharper prevention rule, replace; if complementary, concatenate as numbered list.
-   - For mistakes: if `Recurrences` reaches 3 AND tier is `project`, also copy the entry to global with a `[promoted from project]` note.
-   - Output: `recurrence: <N>` (and `(rule sharpened)` or `(promoted to global)` if applicable).
+   - For mistakes: if `Recurrences` reaches 3 AND tier is `project` AND the entry is **not** tagged `keep-local`, also copy the entry to global with a `[promoted from project]` note.
+   - Output: `recurrence: <N>` (and `(rule sharpened)` or `(promoted to global)` if applicable; `(promotion suppressed by keep-local)` if at threshold but tagged).
 5. **No match** → fresh append:
    - Add a new bullet (or block, for mistakes) under the right section heading.
    - Update the file's header `Last updated:` and `Entries:` count.
@@ -79,7 +79,7 @@ For each memory file in both tiers:
 1. Load the file.
 2. Dedupe near-identical entries (same threshold as append).
 3. Merge entries with overlapping tags + topic into a single richer entry.
-4. Drop entries with `Last seen:` older than 90 days **unless** tagged `permanent` or stored under `mistakes/`.
+4. Drop entries with `Last seen:` older than 90 days **unless** tagged `permanent`. Mistakes follow the same rule with one twist: a mistake whose `Recurrences` has reached ≥ 2 is preserved past the 90-day window (it has paid for itself). Mistakes still at `Recurrences: 1` after 90 days are dropped — they were one-offs.
 5. Sort entries within each section by `Recurrences` desc, then `Last seen` desc.
 6. Rewrite header timestamps and entry counts.
 7. Update `INDEX.md` for the tier.
