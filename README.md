@@ -2,7 +2,7 @@
 
 A globally-installable, persistent, self-improving multi-agent system for Claude Code. Lives in `~/.claude/`, works across any session, on any project, on macOS and Windows.
 
-**Status:** phase 5 — full agent loop with retrospective + mistake-learning self-improvement. Telemetry lands in phase 6. See `plans/00-master-plan.md` for the full architecture and `plans/0N-*.md` for each phase.
+**Status:** phase 6 — complete. Full agent loop, two-tier memory, retrospective self-improvement, and per-invocation telemetry with a baseline-reporting CLI. See `plans/00-master-plan.md` for the full architecture and `plans/0N-*.md` for each phase.
 
 ## Install
 
@@ -76,9 +76,11 @@ Uninstall:
 ~/.claude/
 ├── agents/                # 10 agent definition files
 ├── hooks/                 # 8 hook scripts (4 events × 2 OS variants)
+├── scripts/               # metrics.{sh,ps1} reporting CLI
 ├── memory/                # global tier — cross-project learning
 │   └── INDEX.md           # rest is created lazily by the librarian
 ├── state/                 # per-session gate state (one JSON per session)
+├── metrics/               # sessions.jsonl (append-only telemetry) + BASELINE.md
 └── settings.json          # registers our hooks (merged with your existing config)
 ```
 
@@ -118,6 +120,31 @@ omsbudsman/
 └── uninstall.ps1
 ```
 
+## Telemetry
+
+Every subagent return appends one JSONL record to `~/.claude/metrics/sessions.jsonl`; every Stop appends a per-session summary. The active file rotates to `sessions.<UTC>.jsonl.gz` once it exceeds 10 MB; the last 4 archives are retained.
+
+Reports:
+
+```bash
+~/.claude/scripts/metrics.sh                    # last 7 days summary
+~/.claude/scripts/metrics.sh --agent researcher # per-agent breakdown
+~/.claude/scripts/metrics.sh --session <id>     # one session's flow
+~/.claude/scripts/metrics.sh --baseline         # writes/updates metrics/BASELINE.md
+~/.claude/scripts/metrics.sh --json             # raw summary JSON
+~/.claude/scripts/metrics.sh --days 30          # widen the window
+```
+
+PowerShell users have the matching `metrics.ps1` with `-Agent`, `-Session`, `-Baseline`, `-Json`, `-Days` switches.
+
+Pricing constants are embedded in the scripts and need a manual edit when Anthropic changes prices.
+
+### Privacy / opt-out
+
+Telemetry is local-only — nothing is sent off your machine. The records contain `project_root` (filesystem path) and `task_class`, but no source-code contents and no user prompts.
+
+To disable telemetry entirely, set `CLAUDE_MULTIAGENT_NO_METRICS=1` in your environment. Both the SubagentStop and Stop hooks honor it. Existing files in `~/.claude/metrics/` are preserved on uninstall.
+
 ## Roadmap
 
 | Phase | Status | Sub-plan |
@@ -127,4 +154,4 @@ omsbudsman/
 | 3. Orchestrator + researcher + planner | ✅ implemented | `plans/03-orchestrator-research-planner.md` |
 | 4. Engineers + QA + auditor | ✅ implemented | `plans/04-engineers-qa-auditor.md` |
 | 5. Retrospective + mistake learning | ✅ implemented | `plans/05-retrospective-mistake-learning.md` |
-| 6. Cost telemetry + tuning | planned | `plans/06-cost-telemetry-tuning.md` |
+| 6. Cost telemetry + tuning | ✅ implemented | `plans/06-cost-telemetry-tuning.md` |

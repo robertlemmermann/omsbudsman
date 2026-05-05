@@ -35,6 +35,14 @@ for hook_file in "$SOURCE_DIR/hooks/"*; do
   rm -f "$CLAUDE_HOME/hooks/$name"
 done
 
+if [ -d "$SOURCE_DIR/scripts" ]; then
+  echo "Removing our scripts..."
+  for script_file in "$SOURCE_DIR/scripts/"*; do
+    name=$(basename "$script_file")
+    rm -f "$CLAUDE_HOME/scripts/$name"
+  done
+fi
+
 SETTINGS="$CLAUDE_HOME/settings.json"
 if [ -f "$SETTINGS" ] && command -v python3 >/dev/null 2>&1; then
   echo "Cleaning settings entries..."
@@ -78,6 +86,7 @@ PY
 fi
 
 echo "Memory preserved at $CLAUDE_HOME/memory/"
+[ -d "$CLAUDE_HOME/metrics" ] && echo "Metrics preserved at $CLAUDE_HOME/metrics/"
 echo
 echo "Uninstall complete."
 echo "  Backup: $PREUNINSTALL_DIR"

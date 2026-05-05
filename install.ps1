@@ -20,16 +20,23 @@ if (Test-Path $ClaudeHome) {
     Copy-Item -Path $ClaudeHome -Destination $BackupDir -Recurse -Force
 }
 
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "agents") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "hooks")  | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "memory") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "state")  | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "agents")  | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "hooks")   | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "memory")  | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "state")   | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "metrics") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "scripts") | Out-Null
 
 Write-Host "Installing agents..."
 Copy-Item -Path (Join-Path $SourceDir "agents\*.md") -Destination (Join-Path $ClaudeHome "agents") -Force
 
 Write-Host "Installing hooks..."
 Copy-Item -Path (Join-Path $SourceDir "hooks\*") -Destination (Join-Path $ClaudeHome "hooks") -Force
+
+if (Test-Path (Join-Path $SourceDir "scripts")) {
+    Write-Host "Installing scripts..."
+    Copy-Item -Path (Join-Path $SourceDir "scripts\*") -Destination (Join-Path $ClaudeHome "scripts") -Force
+}
 
 $MemoryIndex = Join-Path $ClaudeHome "memory\INDEX.md"
 if (-not (Test-Path $MemoryIndex)) {
@@ -46,6 +53,9 @@ $SessionStartCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$SessionStart
 $UserPromptSubmitPs1 = Join-Path $ClaudeHome "hooks\user-prompt-submit.ps1"
 $UserPromptSubmitCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$UserPromptSubmitPs1`""
 
+$SubagentStopPs1 = Join-Path $ClaudeHome "hooks\subagent-stop.ps1"
+$SubagentStopCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$SubagentStopPs1`""
+
 $StopPs1 = Join-Path $ClaudeHome "hooks\stop.ps1"
 $StopCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$StopPs1`""
 
@@ -53,6 +63,7 @@ $FragmentRaw      = Get-Content -Raw -Path (Join-Path $SourceDir "settings.fragm
 $FragmentResolved = $FragmentRaw `
     -replace "\{\{HOOK_CMD_SESSION_START\}\}",      ($SessionStartCmd     -replace '\\', '\\\\') `
     -replace "\{\{HOOK_CMD_USER_PROMPT_SUBMIT\}\}", ($UserPromptSubmitCmd -replace '\\', '\\\\') `
+    -replace "\{\{HOOK_CMD_SUBAGENT_STOP\}\}",      ($SubagentStopCmd     -replace '\\', '\\\\') `
     -replace "\{\{HOOK_CMD_STOP\}\}",               ($StopCmd             -replace '\\', '\\\\')
 
 Write-Host "Merging settings..."
@@ -94,17 +105,25 @@ Merge-Object $Settings $Fragment
 
 $Settings | ConvertTo-Json -Depth 20 | Set-Content -Path $SettingsPath -Encoding UTF8
 
-$AgentCount = (Get-ChildItem (Join-Path $ClaudeHome "agents") -File).Count
-$HookCount  = (Get-ChildItem (Join-Path $ClaudeHome "hooks")  -File).Count
+$AgentCount  = (Get-ChildItem (Join-Path $ClaudeHome "agents")  -File).Count
+$HookCount   = (Get-ChildItem (Join-Path $ClaudeHome "hooks")   -File).Count
+$ScriptCount = 0
+if (Test-Path (Join-Path $ClaudeHome "scripts")) {
+    $ScriptCount = (Get-ChildItem (Join-Path $ClaudeHome "scripts") -File).Count
+}
 
 Write-Host ""
 Write-Host "Install complete."
 Write-Host "  Agents:   $AgentCount files at $($ClaudeHome)\agents"
 Write-Host "  Hooks:    $HookCount files at $($ClaudeHome)\hooks"
+Write-Host "  Scripts:  $ScriptCount files at $($ClaudeHome)\scripts"
 Write-Host "  Memory:   $($ClaudeHome)\memory"
+Write-Host "  Metrics:  $($ClaudeHome)\metrics"
 Write-Host "  Settings: $SettingsPath"
 if (Test-Path $BackupDir) {
     Write-Host "  Backup:   $BackupDir"
 }
 Write-Host ""
 Write-Host "Start a new Claude Code session to verify."
+Write-Host "Run $($ClaudeHome)\scripts\metrics.ps1 after a few sessions for cost/perf reports."
+Write-Host "Set `$env:CLAUDE_MULTIAGENT_NO_METRICS=1 to disable telemetry."

@@ -24,7 +24,7 @@ if [ -d "$CLAUDE_HOME" ]; then
   cp -R "$CLAUDE_HOME" "$BACKUP_DIR"
 fi
 
-mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/hooks" "$CLAUDE_HOME/memory" "$CLAUDE_HOME/state"
+mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/hooks" "$CLAUDE_HOME/memory" "$CLAUDE_HOME/state" "$CLAUDE_HOME/metrics" "$CLAUDE_HOME/scripts"
 
 echo "Installing agents..."
 cp "$SOURCE_DIR/agents/"*.md "$CLAUDE_HOME/agents/"
@@ -32,6 +32,12 @@ cp "$SOURCE_DIR/agents/"*.md "$CLAUDE_HOME/agents/"
 echo "Installing hooks..."
 cp "$SOURCE_DIR/hooks/"* "$CLAUDE_HOME/hooks/"
 chmod +x "$CLAUDE_HOME/hooks/"*.sh
+
+if [ -d "$SOURCE_DIR/scripts" ]; then
+  echo "Installing scripts..."
+  cp "$SOURCE_DIR/scripts/"* "$CLAUDE_HOME/scripts/"
+  chmod +x "$CLAUDE_HOME/scripts/"*.sh 2>/dev/null || true
+fi
 
 if [ ! -f "$CLAUDE_HOME/memory/INDEX.md" ]; then
   echo "Seeding memory index..."
@@ -47,9 +53,11 @@ trap 'rm -f "$FRAGMENT_RESOLVED"' EXIT
 
 HOOK_CMD_SESSION_START="$CLAUDE_HOME/hooks/session-start.sh"
 HOOK_CMD_USER_PROMPT_SUBMIT="$CLAUDE_HOME/hooks/user-prompt-submit.sh"
+HOOK_CMD_SUBAGENT_STOP="$CLAUDE_HOME/hooks/subagent-stop.sh"
 HOOK_CMD_STOP="$CLAUDE_HOME/hooks/stop.sh"
 sed -e "s|{{HOOK_CMD_SESSION_START}}|$HOOK_CMD_SESSION_START|g" \
     -e "s|{{HOOK_CMD_USER_PROMPT_SUBMIT}}|$HOOK_CMD_USER_PROMPT_SUBMIT|g" \
+    -e "s|{{HOOK_CMD_SUBAGENT_STOP}}|$HOOK_CMD_SUBAGENT_STOP|g" \
     -e "s|{{HOOK_CMD_STOP}}|$HOOK_CMD_STOP|g" \
     "$FRAGMENT_RAW" > "$FRAGMENT_RESOLVED"
 
@@ -91,13 +99,18 @@ PY
 
 AGENT_COUNT=$(ls -1 "$CLAUDE_HOME/agents" 2>/dev/null | wc -l | tr -d ' ')
 HOOK_COUNT=$(ls -1 "$CLAUDE_HOME/hooks" 2>/dev/null | wc -l | tr -d ' ')
+SCRIPT_COUNT=$(ls -1 "$CLAUDE_HOME/scripts" 2>/dev/null | wc -l | tr -d ' ')
 
 echo
 echo "Install complete."
 echo "  Agents:   $AGENT_COUNT files at $CLAUDE_HOME/agents"
 echo "  Hooks:    $HOOK_COUNT files at $CLAUDE_HOME/hooks"
+echo "  Scripts:  $SCRIPT_COUNT files at $CLAUDE_HOME/scripts"
 echo "  Memory:   $CLAUDE_HOME/memory"
+echo "  Metrics:  $CLAUDE_HOME/metrics"
 echo "  Settings: $SETTINGS"
 [ -d "$BACKUP_DIR" ] && echo "  Backup:   $BACKUP_DIR"
 echo
 echo "Start a new Claude Code session to verify."
+echo "Run $CLAUDE_HOME/scripts/metrics.sh after a few sessions for cost/perf reports."
+echo "Set CLAUDE_MULTIAGENT_NO_METRICS=1 to disable telemetry."
