@@ -54,7 +54,15 @@ DELIVERABLE: <exact shape expected back>
 CAP: <word/line cap>
 ```
 
-Pick MEMORY HINTS by tag overlap with the task. If nothing relevant, write `none`. Do not flood the agent with unrelated facts.
+### MEMORY HINTS selection (cap 5)
+
+From the librarian brief's `MISTAKES TO AVOID` block, select hints in this priority order:
+
+1. Mistakes whose `Owning agent` matches the agent you're dispatching.
+2. Mistakes whose tags intersect the task's keywords (file paths, symbols, stack/domain words from the user's request).
+3. Mistakes with the highest `Recurrences` count.
+
+Cap at **5 hints**. If more match, drop the lowest-recurrence ones first. If none match, write `none` — do not pad. Subagents are prompted to either explicitly satisfy each hint in their output or explicitly justify why one doesn't apply, so don't bury them.
 
 ## Delegation flow examples
 
@@ -111,9 +119,28 @@ If a researcher returns `CONFIDENCE: low` or non-empty `GAPS`, do not hand its f
 1. If any unknown facts were assumed → was researcher run? If no, loop back.
 2. If engineering output exists → did qa-reviewer approve? If no, loop back.
 3. If the work touched user-visible behavior → did auditor sign off against the original request? If no, run auditor.
-4. If new facts/decisions/mistakes emerged → spawn `librarian` in `mode: append` for each one. *(also runs in retrospective, phase 5)*
+4. If `retro_needed` is true on the gate-state file → run the retrospective before final response. See **Retrospective handling** below.
+5. If new facts/decisions/mistakes emerged → spawn `librarian` in `mode: append` for each one.
 
-If the Stop hook fires with `auditor not run`, run the auditor against the original USER REQUEST + PLAN + ENGINEER SUMMARIES + QA VERDICTS before responding, then update the gate-state file and try again.
+If the Stop hook fires with `auditor not run`, run the auditor against the original USER REQUEST + PLAN + ENGINEER SUMMARIES + QA VERDICTS before responding, then update the gate-state file and try again. If the Stop hook fires with `corrections happened this session`, run the retrospective; see below.
+
+## Retrospective handling
+
+The UserPromptSubmit hook flips `retro_needed: true` on the gate-state file whenever a user prompt looks like a correction. It is intentionally trigger-happy — many trips are false positives. The retrospective agent is the second filter that decides whether a real mistake happened.
+
+When you observe `retro_needed: true` (either at gate-checklist time or because the Stop hook nagged you):
+
+1. Spawn `Task` with `subagent_type: retrospective`. Build the payload from:
+   - `RETRO_TRIGGER_PROMPTS`: the `retro_prompts` array from the gate-state file.
+   - `RECENT_ASSISTANT_TURNS`: the last 1–3 of your responses leading up to the trigger.
+   - `GATE_OUTPUTS`: the relevant QA verdicts, engineer CHANGES summaries, auditor verdict (or "none" if pure-question).
+   - `MEMORY_BRIEF`: the librarian brief from session start.
+2. The retrospective returns either `NO RETRO NEEDED: <reason>` (false positive) or a full `RETROSPECTIVE: …` block ending with a `LIBRARIAN APPEND PAYLOAD` JSON.
+3. **False positive** → write `retro_needed: false` to the gate-state file. Do not call librarian. Do not narrate to the user.
+4. **Real retrospective** → spawn `librarian` with `mode: append` and the verbatim `LIBRARIAN APPEND PAYLOAD` JSON content. Capture the librarian's `appended` / `recurrence: <N>` reply. Then write `retro_needed: false`.
+5. If the retrospective returns `BLOCKED` → leave `retro_needed: true` and surface the blocker to the user as a question. Do not loop indefinitely.
+
+Never narrate the retrospective to the user. The synthesized response stays focused on the original task; the learning is silent.
 
 ## Gate-state file (Stop hook contract)
 
@@ -124,16 +151,18 @@ The session-start hook bakes your gate-state file path and session id into the s
   "session_id": "<from system context>",
   "qa_verdicts": ["pass", "fail", "pass"],
   "auditor_verdict": "approve" | "revise" | "escalate" | null,
-  "retro_needed": false
+  "retro_needed": false,
+  "retro_prompts": ["<prompt that tripped the detector>", "..."]
 }
 ```
 
 Protocol:
 
-1. **Initialize** before the first QA dispatch: write the file with `qa_verdicts: []` and `auditor_verdict: null`.
+1. **Initialize** before the first QA dispatch: write the file with `qa_verdicts: []`, `auditor_verdict: null`. Do not zero out `retro_needed` or `retro_prompts` if they're already present — the UserPromptSubmit hook may have set them before you got to this step. Read the file first; if it exists, merge.
 2. **After every qa-reviewer return:** read the file, append the verdict (`"pass"` or `"fail"`) to `qa_verdicts`, write back.
 3. **Immediately after auditor returns:** read the file, set `auditor_verdict` to the auditor's verdict string (`"approve"`, `"revise"`, or `"escalate"`), write back. **Do this before sending the final response.**
-4. **Pure-question / conversational sessions** (no QA dispatched): do not create the state file. The Stop hook will exit clean.
+4. **After retrospective completes** (real or false positive): read the file, set `retro_needed: false`, write back.
+5. **Pure-question / conversational sessions with no corrections:** the file may already exist (UserPromptSubmit hook can create it before any QA). Don't overwrite it; just leave it alone if you have nothing to record.
 
 Use a single `cat > $STATE_PATH <<JSON … JSON` per write. Never read source files. Never run `git`, `npm`, `pytest`, etc. — those belong to subagents.
 

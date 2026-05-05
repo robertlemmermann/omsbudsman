@@ -43,13 +43,17 @@ if (-not (Test-Path $MemoryIndex)) {
 $SessionStartPs1 = Join-Path $ClaudeHome "hooks\session-start.ps1"
 $SessionStartCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$SessionStartPs1`""
 
+$UserPromptSubmitPs1 = Join-Path $ClaudeHome "hooks\user-prompt-submit.ps1"
+$UserPromptSubmitCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$UserPromptSubmitPs1`""
+
 $StopPs1 = Join-Path $ClaudeHome "hooks\stop.ps1"
 $StopCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$StopPs1`""
 
 $FragmentRaw      = Get-Content -Raw -Path (Join-Path $SourceDir "settings.fragment.json")
 $FragmentResolved = $FragmentRaw `
-    -replace "\{\{HOOK_CMD_SESSION_START\}\}", ($SessionStartCmd -replace '\\', '\\\\') `
-    -replace "\{\{HOOK_CMD_STOP\}\}",          ($StopCmd         -replace '\\', '\\\\')
+    -replace "\{\{HOOK_CMD_SESSION_START\}\}",      ($SessionStartCmd     -replace '\\', '\\\\') `
+    -replace "\{\{HOOK_CMD_USER_PROMPT_SUBMIT\}\}", ($UserPromptSubmitCmd -replace '\\', '\\\\') `
+    -replace "\{\{HOOK_CMD_STOP\}\}",               ($StopCmd             -replace '\\', '\\\\')
 
 Write-Host "Merging settings..."
 $Settings = $null

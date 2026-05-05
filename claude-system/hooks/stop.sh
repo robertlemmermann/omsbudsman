@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Phase 4: enforce the auditor gate.
+# Phase 4 + 5: enforce the auditor and retrospective gates.
 #
 # Read JSON from stdin (Claude Code Stop-hook contract). Look up the
-# session-state file the orchestrator writes at each gate. If any QA
-# verdicts were recorded but auditor_verdict is null, emit a JSON
-# "decision: block" message so the orchestrator must run the auditor.
+# session-state file the orchestrator writes at each gate.
+# Block clean termination if either:
+#   (a) qa_verdicts is non-empty AND auditor_verdict is null  -> auditor missing
+#   (b) retro_needed is true                                  -> retrospective missing
 #
-# Bypass: set CLAUDE_SKIP_AUDIT=1 in the environment for the rare case
-# the user is mid-work and wants to stop without auditing.
+# Bypass: set CLAUDE_SKIP_AUDIT=1 (skips both blocks). The retrospective
+# block has no separate bypass — corrections during a session always
+# warrant a post-mortem unless the user explicitly bypasses everything.
 #
-# Phases 5 and 6 will extend this hook for retrospective + telemetry.
+# Phase 6 will extend this hook for telemetry.
 set -e
 
 if [ "${CLAUDE_SKIP_AUDIT:-0}" = "1" ]; then
@@ -53,17 +55,31 @@ try:
 except (OSError, json.JSONDecodeError):
     sys.exit(0)
 
-qa_verdicts = state.get("qa_verdicts") or []
+qa_verdicts     = state.get("qa_verdicts") or []
 auditor_verdict = state.get("auditor_verdict")
+retro_needed    = bool(state.get("retro_needed"))
+
+reasons = []
 
 if qa_verdicts and auditor_verdict is None:
+    reasons.append(
+        "auditor not run — run the auditor agent against the original user "
+        "request, the PLAN, all engineer CHANGES, and the QA verdicts before "
+        "responding."
+    )
+
+if retro_needed:
+    reasons.append(
+        "corrections happened this session — run the retrospective agent "
+        "against retro_prompts + the recent assistant turns + GATE_OUTPUTS, "
+        "then dispatch librarian (mode: append) with its payload (or clear "
+        "retro_needed if the retrospective decides this was a false positive)."
+    )
+
+if reasons:
     out = {
         "decision": "block",
-        "reason": (
-            "auditor not run — run the auditor agent against the original user "
-            "request, the PLAN, all engineer CHANGES, and the QA verdicts before "
-            "responding. Set CLAUDE_SKIP_AUDIT=1 to bypass for this stop only."
-        ),
+        "reason": " | ".join(reasons) + " Set CLAUDE_SKIP_AUDIT=1 to bypass for this stop only.",
     }
     print(json.dumps(out))
 PY
