@@ -78,6 +78,15 @@ if (Test-Path $SettingsPath) {
         if (@($hooks.PSObject.Properties).Count -eq 0) {
             $Settings.PSObject.Properties.Remove("hooks")
         }
+    }
+    if ($null -ne $Settings -and $Settings.PSObject.Properties["statusLine"]) {
+        $ScriptsDir = Join-Path $ClaudeHome "scripts"
+        $cmd = [string]$Settings.statusLine.command
+        if ($cmd -like "*$ScriptsDir*") {
+            $Settings.PSObject.Properties.Remove("statusLine")
+        }
+    }
+    if ($null -ne $Settings) {
         $Settings | ConvertTo-Json -Depth 20 | Set-Content -Path $SettingsPath -Encoding UTF8
     }
 }

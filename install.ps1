@@ -59,18 +59,26 @@ $SessionStartCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$SessionStart
 $UserPromptSubmitPs1 = Join-Path $ClaudeHome "hooks\user-prompt-submit.ps1"
 $UserPromptSubmitCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$UserPromptSubmitPs1`""
 
+$PreToolUsePs1 = Join-Path $ClaudeHome "hooks\pre-tool-use.ps1"
+$PreToolUseCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$PreToolUsePs1`""
+
 $SubagentStopPs1 = Join-Path $ClaudeHome "hooks\subagent-stop.ps1"
 $SubagentStopCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$SubagentStopPs1`""
 
 $StopPs1 = Join-Path $ClaudeHome "hooks\stop.ps1"
 $StopCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$StopPs1`""
 
+$StatuslinePs1 = Join-Path $ClaudeHome "scripts\statusline.ps1"
+$StatuslineCmd = "powershell.exe -ExecutionPolicy Bypass -File `"$StatuslinePs1`""
+
 $FragmentRaw      = Get-Content -Raw -Path (Join-Path $SourceDir "settings.fragment.json")
 $FragmentResolved = $FragmentRaw `
     -replace "\{\{HOOK_CMD_SESSION_START\}\}",      ($SessionStartCmd     -replace '\\', '\\\\') `
     -replace "\{\{HOOK_CMD_USER_PROMPT_SUBMIT\}\}", ($UserPromptSubmitCmd -replace '\\', '\\\\') `
+    -replace "\{\{HOOK_CMD_PRE_TOOL_USE\}\}",       ($PreToolUseCmd       -replace '\\', '\\\\') `
     -replace "\{\{HOOK_CMD_SUBAGENT_STOP\}\}",      ($SubagentStopCmd     -replace '\\', '\\\\') `
-    -replace "\{\{HOOK_CMD_STOP\}\}",               ($StopCmd             -replace '\\', '\\\\')
+    -replace "\{\{HOOK_CMD_STOP\}\}",               ($StopCmd             -replace '\\', '\\\\') `
+    -replace "\{\{STATUSLINE_CMD\}\}",              ($StatuslineCmd       -replace '\\', '\\\\')
 
 Write-Host "Merging settings..."
 $Settings = $null

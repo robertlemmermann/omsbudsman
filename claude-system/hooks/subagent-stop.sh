@@ -19,16 +19,18 @@ fi
 GLOBAL_ROOT="${LIBRARIAN_GLOBAL_ROOT:-${CLAUDE_HOME:-$HOME/.claude}}"
 PROJECT_ROOT="${LIBRARIAN_PROJECT_ROOT:-$(pwd)}"
 METRICS_DIR="$GLOBAL_ROOT/metrics"
-mkdir -p "$METRICS_DIR" 2>/dev/null || true
+STATE_DIR="$GLOBAL_ROOT/state"
+mkdir -p "$METRICS_DIR" "$STATE_DIR" 2>/dev/null || true
 
 JSONL="$METRICS_DIR/sessions.jsonl"
 
-python3 - "$JSONL" "$PROJECT_ROOT" "$INPUT" <<'PY'
+python3 - "$JSONL" "$PROJECT_ROOT" "$STATE_DIR" "$INPUT" <<'PY'
 import json, sys, datetime, pathlib
 
 jsonl_path = pathlib.Path(sys.argv[1])
 project_root = sys.argv[2]
-raw = sys.argv[3]
+state_dir = pathlib.Path(sys.argv[3])
+raw = sys.argv[4]
 
 try:
     payload = json.loads(raw)
@@ -119,6 +121,90 @@ try:
         f.write(json.dumps(record) + "\n")
 except OSError:
     pass
+
+# --- Team activity state update (for statusLine renderer) ---
+session_id = payload.get("session_id")
+agent_name = record["agent"]
+if session_id and agent_name:
+    state_path = state_dir / f"agents-{session_id}.json"
+    if state_path.is_file():
+        try:
+            astate = json.loads(state_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            astate = None
+        if isinstance(astate, dict) and isinstance(astate.get("agents"), list):
+            # Pull a one-line summary from the agent's response, if present.
+            response = (
+                payload.get("response")
+                or get(payload, "subagent", "response")
+                or get(payload, "result")
+                or ""
+            )
+            if isinstance(response, dict):
+                response = response.get("content") or response.get("text") or ""
+            if isinstance(response, list):
+                # Join text-blocks if the harness gives us a content array.
+                pieces = []
+                for blk in response:
+                    if isinstance(blk, dict):
+                        pieces.append(blk.get("text") or "")
+                response = "\n".join(p for p in pieces if p)
+            if not isinstance(response, str):
+                response = str(response)
+
+            summary_line = ""
+            for line in response.splitlines():
+                s = line.strip()
+                if s and not s.startswith(("```", "---", "===")):
+                    summary_line = s
+                    break
+            if len(summary_line) > 100:
+                summary_line = summary_line[:99].rstrip() + "…"
+
+            # Verdict normalization for gate agents.
+            outcome = "blocked" if record["blocked"] else "ok"
+            low_resp = response.lower()
+            if agent_name == "qa-reviewer":
+                if "verdict: pass" in low_resp or "\npass" in low_resp[:200]:
+                    outcome = "pass"
+                elif "verdict: fail" in low_resp or "\nfail" in low_resp[:200]:
+                    outcome = "fail"
+            elif agent_name == "auditor":
+                for v in ("approve", "revise", "escalate"):
+                    if f"verdict: {v}" in low_resp or v in low_resp[:120]:
+                        outcome = v
+                        break
+
+            status = "blocked" if record["blocked"] else (
+                "failed" if outcome in ("fail",) else "done"
+            )
+
+            # Mark the most recent matching active entry as finished.
+            for entry in reversed(astate["agents"]):
+                if entry.get("agent") == agent_name and entry.get("status") == "active":
+                    entry["status"] = status
+                    entry["ended_at"] = record["ts"]
+                    entry["summary"] = summary_line or None
+                    entry["outcome"] = outcome
+                    break
+            else:
+                # No matching active entry (e.g., PreToolUse hook missed); append a synthetic one.
+                astate["agents"].append({
+                    "agent": agent_name,
+                    "description": "",
+                    "status": status,
+                    "started_at": record["ts"],
+                    "ended_at": record["ts"],
+                    "summary": summary_line or None,
+                    "outcome": outcome,
+                })
+                astate["agents"] = astate["agents"][-30:]
+
+            astate["updated_at"] = record["ts"]
+            try:
+                state_path.write_text(json.dumps(astate, indent=2) + "\n")
+            except OSError:
+                pass
 PY
 
 exit 0
