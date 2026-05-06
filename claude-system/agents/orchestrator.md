@@ -60,9 +60,11 @@ From the librarian brief's `MISTAKES TO AVOID` block, select hints in this prior
 
 1. Mistakes whose `Owning agent` matches the agent you're dispatching.
 2. Mistakes whose tags intersect the task's keywords (file paths, symbols, stack/domain words from the user's request).
-3. Mistakes with the highest `Recurrences` count.
+3. Mistakes with the highest `Recurrences` count, weighted by recency: `score = log(1 + recurrences) × recency_factor`, where `recency_factor` = 1.0 if `Last seen` is within 30 days, 0.5 within 90 days, 0.25 otherwise.
 
-Cap at **5 hints**. If more match, drop the lowest-recurrence ones first. If none match, write `none` — do not pad. Subagents are prompted to either explicitly satisfy each hint in their output or explicitly justify why one doesn't apply, so don't bury them.
+Cap at **5 hints**. If more match, drop the lowest-score ones first. If none match, write `none` — do not pad. Subagents are prompted to either explicitly satisfy each hint in their output or explicitly justify why one doesn't apply, so don't bury them.
+
+If a user says a rule is wrong, surface `/forget-rule` so they can archive it rather than ignoring it; the librarian's `mode: forget` performs a soft-delete (`<tier>/.archive/`) and removes it from future briefs.
 
 ## Delegation flow examples
 
@@ -149,8 +151,10 @@ The session-start hook bakes your gate-state file path and session id into the s
 ```json
 {
   "session_id": "<from system context>",
+  "task_class": "implement",
   "qa_verdicts": ["pass", "fail", "pass"],
   "auditor_verdict": "approve" | "revise" | "escalate" | null,
+  "diff_produced": true,
   "retro_needed": false,
   "retro_prompts": ["<prompt that tripped the detector>", "..."]
 }
@@ -158,11 +162,12 @@ The session-start hook bakes your gate-state file path and session id into the s
 
 Protocol:
 
-1. **Initialize** before the first QA dispatch: write the file with `qa_verdicts: []`, `auditor_verdict: null`. Do not zero out `retro_needed` or `retro_prompts` if they're already present — the UserPromptSubmit hook may have set them before you got to this step. Read the file first; if it exists, merge.
-2. **After every qa-reviewer return:** read the file, append the verdict (`"pass"` or `"fail"`) to `qa_verdicts`, write back.
+1. **Initialize** before the first QA dispatch: write the file with `qa_verdicts: []`, `auditor_verdict: null`, and your intent classification as `task_class` (one of `question`, `plan`, `implement`, `trivial`, `conversational`, `fix`, `other`). Set `diff_produced: true` if any engineer is about to run, `false` otherwise. Do not zero out `retro_needed` or `retro_prompts` if they're already present — the UserPromptSubmit hook may have set them before you got to this step. Read the file first; if it exists, merge.
+2. **After every qa-reviewer return:** read the file, append the verdict (`"pass"` or `"fail"`) to `qa_verdicts`, write back. **If a step has now failed QA twice in a row** (count `"fail"` entries for the same step number across this session): set `retro_needed: true` so the retrospective auto-fires even when the user doesn't push back. The retrospective itself decides whether the loop was a real lesson or a false positive.
 3. **Immediately after auditor returns:** read the file, set `auditor_verdict` to the auditor's verdict string (`"approve"`, `"revise"`, or `"escalate"`), write back. **Do this before sending the final response.**
 4. **After retrospective completes** (real or false positive): read the file, set `retro_needed: false`, write back.
-5. **Pure-question / conversational sessions with no corrections:** the file may already exist (UserPromptSubmit hook can create it before any QA). Don't overwrite it; just leave it alone if you have nothing to record.
+5. **Pure-question / conversational sessions with no corrections:** the file may already exist (UserPromptSubmit hook can create it before any QA). Don't overwrite it; just leave it alone if you have nothing to record. If you do classify intent (e.g. for routing), write `task_class` to the file even on read-only paths — the telemetry summary uses it directly instead of guessing from agent dispatches.
+6. **Engineer dispatch produced no edits** (every engineer returned `BLOCKED` or "no-op"): set `diff_produced: false`. The Stop hook then skips the auditor gate, since there's nothing to audit.
 
 Use a single `cat > $STATE_PATH <<JSON … JSON` per write. Never read source files. Never run `git`, `npm`, `pytest`, etc. — those belong to subagents.
 

@@ -76,9 +76,11 @@ Uninstall:
 ~/.claude/
 ├── agents/                # 10 agent definition files
 ├── hooks/                 # 10 hook scripts (5 events × 2 OS variants)
-├── scripts/               # metrics + statusline scripts (sh + ps1)
+├── scripts/               # metrics + statusline scripts (sh + ps1) + pricing.json
+├── commands/              # slash commands (e.g. /forget-rule)
 ├── memory/                # global tier — cross-project learning
-│   └── INDEX.md           # rest is created lazily by the librarian
+│   ├── INDEX.md           # rest is created lazily by the librarian
+│   └── .archive/          # soft-deleted entries (compact + /forget-rule)
 ├── state/                 # per-session gate + team-activity state
 ├── metrics/               # sessions.jsonl (append-only telemetry) + BASELINE.md
 └── settings.json          # registers our hooks + statusLine (merged with your existing config)
@@ -122,22 +124,30 @@ omsbudsman/
 
 ## Telemetry
 
-Every subagent return appends one JSONL record to `~/.claude/metrics/sessions.jsonl`; every Stop appends a per-session summary. The active file rotates to `sessions.<UTC>.jsonl.gz` once it exceeds 10 MB; the last 4 archives are retained.
+Every subagent return appends one JSONL record to `~/.claude/metrics/sessions.jsonl`; every Stop appends a per-session summary. Records carry a `schema_version` and the optional `claude_code_version` so future schema changes don't silently corrupt baselines. The active file rotates to:
+- `sessions.<UTC-timestamp>.jsonl.gz` when it exceeds 10 MB (last 4 archives retained), OR
+- `sessions.<YYYY-MM>.jsonl.gz` at the first append after a month boundary (kept indefinitely so you can answer "show me April").
 
 Reports:
 
 ```bash
-~/.claude/scripts/metrics.sh                    # last 7 days summary
-~/.claude/scripts/metrics.sh --agent researcher # per-agent breakdown
-~/.claude/scripts/metrics.sh --session <id>     # one session's flow
-~/.claude/scripts/metrics.sh --baseline         # writes/updates metrics/BASELINE.md
-~/.claude/scripts/metrics.sh --json             # raw summary JSON
-~/.claude/scripts/metrics.sh --days 30          # widen the window
+~/.claude/scripts/metrics.sh                       # last 7 days summary
+~/.claude/scripts/metrics.sh --agent researcher    # per-agent breakdown
+~/.claude/scripts/metrics.sh --session <id>        # one session's flow
+~/.claude/scripts/metrics.sh --baseline            # writes/updates metrics/BASELINE.md
+~/.claude/scripts/metrics.sh --json                # raw summary JSON
+~/.claude/scripts/metrics.sh --days 30             # widen the window
+~/.claude/scripts/metrics.sh --exclude-outliers    # trim top/bottom 5% from stats
+~/.claude/scripts/metrics.sh --histograms          # text-mode bars per agent
+~/.claude/scripts/metrics.sh --check               # exit non-zero if tokens/task drift > threshold
+~/.claude/scripts/metrics.sh --regress-pct 30      # threshold for --check (default 20%)
 ```
+
+`--check` reads `BASELINE_TOKENS_PER_TASK` from `metrics/BASELINE.md` (written by `--baseline`) and compares it to the last-7-days mean. Wire it into your shell's `PROMPT_COMMAND` or a CI cron to surface cost drift early.
 
 PowerShell users have the matching `metrics.ps1` with `-Agent`, `-Session`, `-Baseline`, `-Json`, `-Days` switches.
 
-Pricing constants are embedded in the scripts and need a manual edit when Anthropic changes prices.
+Pricing lives in `~/.claude/scripts/pricing.json` (per-1M-token rates as `[input, output]` plus a `last_updated` field). Edit that file when Anthropic changes rates; `metrics.sh` warns when the file is more than 90 days old.
 
 ## Team status line
 
@@ -162,6 +172,12 @@ If your existing `settings.json` already defines a `statusLine`, the installer's
 Telemetry is local-only — nothing is sent off your machine. The records contain `project_root` (filesystem path) and `task_class`, but no source-code contents and no user prompts.
 
 To disable telemetry entirely, set `CLAUDE_MULTIAGENT_NO_METRICS=1` in your environment. Both the SubagentStop and Stop hooks honor it. Existing files in `~/.claude/metrics/` are preserved on uninstall.
+
+## Slash commands
+
+Installed to `~/.claude/commands/`:
+
+- `/forget-rule [filter]` — list recent learned mistake-prevention rules and soft-delete (archive) one. Use when a wrongly-learned rule is polluting your sessions. The archived entry lives at `<tier>/.archive/forget-<UTC-date>.md` and can be restored by hand.
 
 ## Roadmap
 

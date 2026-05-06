@@ -24,22 +24,43 @@ if (-not [string]::IsNullOrWhiteSpace($HookInput)) {
     } catch { $SessionId = "" }
 }
 
-# Locate project root: git toplevel, fall back to cwd.
-$ProjectRoot = $null
-try {
-    $ProjectRoot = (git rev-parse --show-toplevel 2>$null).Trim()
-} catch { }
-if (-not $ProjectRoot) {
-    $ProjectRoot = (Get-Location).Path
+# Locate project root via explicit markers — never let bare cwd define
+# project identity (audit P2.3). Walk up looking for git, .claude/memory,
+# or a known stack manifest.
+function Find-ProjectRoot {
+    $dir = (Get-Location).Path
+    while ($dir -and $dir -ne (Split-Path $dir -Parent)) {
+        if ((Test-Path (Join-Path $dir ".git")) `
+            -or (Test-Path (Join-Path $dir ".claude\memory")) `
+            -or (Test-Path (Join-Path $dir "package.json")) `
+            -or (Test-Path (Join-Path $dir "pyproject.toml")) `
+            -or (Test-Path (Join-Path $dir "Cargo.toml")) `
+            -or (Test-Path (Join-Path $dir "go.mod"))) {
+            return $dir
+        }
+        $dir = Split-Path $dir -Parent
+    }
+    return $null
 }
 
-$ProjectMemoryDir = Join-Path $ProjectRoot ".claude\memory"
-$MistakesDir      = Join-Path $ProjectMemoryDir "mistakes"
+$ProjectRoot = $null
+try {
+    $ProjectRoot = (git rev-parse --show-toplevel 2>$null)
+    if ($ProjectRoot) { $ProjectRoot = $ProjectRoot.Trim() }
+} catch { }
+if (-not $ProjectRoot) {
+    $ProjectRoot = Find-ProjectRoot
+}
 
-New-Item -ItemType Directory -Force -Path $MistakesDir | Out-Null
+$ProjectMemoryDir = $null
+if ($ProjectRoot) {
+    $ProjectMemoryDir = Join-Path $ProjectRoot ".claude\memory"
+    $MistakesDir      = Join-Path $ProjectMemoryDir "mistakes"
 
-$ProjectIndex = Join-Path $ProjectMemoryDir "INDEX.md"
-if (-not (Test-Path $ProjectIndex)) {
+    New-Item -ItemType Directory -Force -Path $MistakesDir | Out-Null
+
+    $ProjectIndex = Join-Path $ProjectMemoryDir "INDEX.md"
+    if (-not (Test-Path $ProjectIndex)) {
 @'
 # Memory Index - Project
 
@@ -54,10 +75,10 @@ Project-tier memory. Maintained by the librarian agent.
 - `mistakes/INDEX.md` - tag to file map for prevention rules
 - `mistakes/<topic>.md` - prevention rules for this codebase
 '@ | Set-Content -Path $ProjectIndex -Encoding UTF8
-}
+    }
 
-$MistakesIndex = Join-Path $MistakesDir "INDEX.md"
-if (-not (Test-Path $MistakesIndex)) {
+    $MistakesIndex = Join-Path $MistakesDir "INDEX.md"
+    if (-not (Test-Path $MistakesIndex)) {
 @'
 # Mistakes Index - Project
 
@@ -65,10 +86,16 @@ if (-not (Test-Path $MistakesIndex)) {
 
 Tag to file map for project-specific prevention rules.
 '@ | Set-Content -Path $MistakesIndex -Encoding UTF8
+    }
 }
 
 $GlobalRoot = if ($env:CLAUDE_HOME) { $env:CLAUDE_HOME } else { Join-Path $env:USERPROFILE ".claude" }
-$env:LIBRARIAN_PROJECT_ROOT = $ProjectRoot
+# Empty LIBRARIAN_PROJECT_ROOT signals global-only operation downstream.
+if ($ProjectRoot) {
+    $env:LIBRARIAN_PROJECT_ROOT = $ProjectRoot
+} else {
+    $env:LIBRARIAN_PROJECT_ROOT = ""
+}
 $env:LIBRARIAN_GLOBAL_ROOT  = $GlobalRoot
 
 $StateDir = Join-Path $GlobalRoot "state"
@@ -96,5 +123,9 @@ $Payload = @{
 } | ConvertTo-Json -Compress -Depth 4
 
 [Console]::Out.WriteLine($Payload)
-[Console]::Error.WriteLine("[claude-multi-agent] memory tiers ready: $GlobalRoot\memory + $ProjectMemoryDir")
+if ($ProjectMemoryDir) {
+    [Console]::Error.WriteLine("[claude-multi-agent] memory tiers ready: $GlobalRoot\memory + $ProjectMemoryDir")
+} else {
+    [Console]::Error.WriteLine("[claude-multi-agent] memory ready (global-only - no project marker found at $((Get-Location).Path) or above)")
+}
 exit 0

@@ -63,9 +63,15 @@ if state is not None and not skip_audit:
     qa_verdicts     = state.get("qa_verdicts") or []
     auditor_verdict = state.get("auditor_verdict")
     retro_needed    = bool(state.get("retro_needed"))
+    # Audit M2: if the orchestrator explicitly set diff_produced=false, skip
+    # the auditor gate even if QA ran (e.g. all engineers BLOCKED before
+    # touching files). Default to True for backwards compatibility.
+    diff_produced   = state.get("diff_produced")
+    if diff_produced is None:
+        diff_produced = True
 
     reasons = []
-    if qa_verdicts and auditor_verdict is None:
+    if qa_verdicts and auditor_verdict is None and diff_produced:
         reasons.append(
             "auditor not run — run the auditor agent against the original user "
             "request, the PLAN, all engineer CHANGES, and the QA verdicts before "
@@ -80,9 +86,14 @@ if state is not None and not skip_audit:
         )
 
     if reasons:
+        bypass = (
+            " To bypass for this stop only, re-run Claude Code with the env var set:"
+            " `CLAUDE_SKIP_AUDIT=1 claude` (Unix) or `$env:CLAUDE_SKIP_AUDIT=1; claude`"
+            " (PowerShell). Use only if you have already verified the work yourself."
+        )
         out = {
             "decision": "block",
-            "reason": " | ".join(reasons) + " Set CLAUDE_SKIP_AUDIT=1 to bypass for this stop only.",
+            "reason": " | ".join(reasons) + bypass,
         }
         print(json.dumps(out))
         sys.exit(0)
@@ -154,6 +165,7 @@ mistakes_recorded = 0
 mistakes_recorded = sum(1 for r in sub_records if r.get("agent") == "retrospective" and not r.get("blocked"))
 
 summary = {
+    "schema_version": "1.0",
     "kind": "session",
     "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
     "session_id": session_id,

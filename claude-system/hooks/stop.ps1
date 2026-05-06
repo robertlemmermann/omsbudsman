@@ -42,9 +42,12 @@ if ($State -and -not $SkipAudit) {
     $QaVerdicts = @()
     if ($State.qa_verdicts) { $QaVerdicts = @($State.qa_verdicts) }
     $RetroNeeded = [bool]$State.retro_needed
+    # Audit M2: skip auditor gate when no engineering diff was produced.
+    $DiffProduced = $true
+    if ($null -ne $State.diff_produced) { $DiffProduced = [bool]$State.diff_produced }
 
     $Reasons = @()
-    if ($QaVerdicts.Count -gt 0 -and $null -eq $State.auditor_verdict) {
+    if ($QaVerdicts.Count -gt 0 -and $null -eq $State.auditor_verdict -and $DiffProduced) {
         $Reasons += "auditor not run - run the auditor agent against the original user request, the PLAN, all engineer CHANGES, and the QA verdicts before responding."
     }
     if ($RetroNeeded) {
@@ -52,9 +55,13 @@ if ($State -and -not $SkipAudit) {
     }
 
     if ($Reasons.Count -gt 0) {
+        $Bypass = " To bypass for this stop only, re-run Claude Code with the env var set: " +
+                  "``$env:CLAUDE_SKIP_AUDIT=1; claude`` (PowerShell) or " +
+                  "``CLAUDE_SKIP_AUDIT=1 claude`` (Unix). Use only if you have already " +
+                  "verified the work yourself."
         $Out = @{
             decision = "block"
-            reason   = ($Reasons -join " | ") + " Set CLAUDE_SKIP_AUDIT=1 to bypass for this stop only."
+            reason   = ($Reasons -join " | ") + $Bypass
         } | ConvertTo-Json -Compress
         [Console]::Out.WriteLine($Out)
         exit 0
@@ -124,6 +131,7 @@ $RetroTriggered = $false
 if ($State -and ($State.retro_needed -or $State.retro_prompts)) { $RetroTriggered = $true }
 
 $Summary = [ordered]@{
+    schema_version     = "1.0"
     kind               = "session"
     ts                 = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     session_id         = $SessionId

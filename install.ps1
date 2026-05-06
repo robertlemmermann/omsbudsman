@@ -20,12 +20,13 @@ if (Test-Path $ClaudeHome) {
     Copy-Item -Path $ClaudeHome -Destination $BackupDir -Recurse -Force
 }
 
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "agents")  | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "hooks")   | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "memory")  | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "state")   | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "metrics") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "scripts") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "agents")   | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "hooks")    | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "memory")   | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "state")    | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "metrics")  | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "scripts")  | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeHome "commands") | Out-Null
 
 Write-Host "Installing agents..."
 Copy-Item -Path (Join-Path $SourceDir "agents\*.md") -Destination (Join-Path $ClaudeHome "agents") -Force
@@ -36,6 +37,11 @@ Copy-Item -Path (Join-Path $SourceDir "hooks\*") -Destination (Join-Path $Claude
 if (Test-Path (Join-Path $SourceDir "scripts")) {
     Write-Host "Installing scripts..."
     Copy-Item -Path (Join-Path $SourceDir "scripts\*") -Destination (Join-Path $ClaudeHome "scripts") -Force
+}
+
+if (Test-Path (Join-Path $SourceDir "commands")) {
+    Write-Host "Installing slash commands..."
+    Copy-Item -Path (Join-Path $SourceDir "commands\*.md") -Destination (Join-Path $ClaudeHome "commands") -Force
 }
 
 $MemoryIndex = Join-Path $ClaudeHome "memory\INDEX.md"
@@ -119,12 +125,17 @@ $ScriptCount = 0
 if (Test-Path (Join-Path $ClaudeHome "scripts")) {
     $ScriptCount = (Get-ChildItem (Join-Path $ClaudeHome "scripts") -File).Count
 }
+$CommandCount = 0
+if (Test-Path (Join-Path $ClaudeHome "commands")) {
+    $CommandCount = (Get-ChildItem (Join-Path $ClaudeHome "commands") -File).Count
+}
 
 Write-Host ""
 Write-Host "Install complete."
 Write-Host "  Agents:   $AgentCount files at $($ClaudeHome)\agents"
 Write-Host "  Hooks:    $HookCount files at $($ClaudeHome)\hooks"
 Write-Host "  Scripts:  $ScriptCount files at $($ClaudeHome)\scripts"
+Write-Host "  Commands: $CommandCount files at $($ClaudeHome)\commands"
 Write-Host "  Memory:   $($ClaudeHome)\memory"
 Write-Host "  Metrics:  $($ClaudeHome)\metrics"
 Write-Host "  Settings: $SettingsPath"
