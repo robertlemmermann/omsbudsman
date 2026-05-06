@@ -48,10 +48,12 @@ def get(obj, *path, default=None):
 usage = get(payload, "usage") or get(payload, "subagent", "usage") or {}
 
 record = {
+    "schema_version": "1.0",
     "kind": "subagent",
     "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
     "session_id": payload.get("session_id"),
     "project_root": project_root,
+    "claude_code_version": payload.get("claude_code_version") or get(payload, "version") or None,
     "agent": (
         get(payload, "subagent_type")
         or get(payload, "subagent", "type")
@@ -67,19 +69,48 @@ record = {
     "outcome": payload.get("outcome") or ("blocked" if payload.get("blocked") else "ok"),
 }
 
-# Rotate if the active file exceeds 10 MB. Keep the last 4 archives.
+# Rotate by size (>10 MB) OR by month boundary, whichever comes first.
+# Keep the last 4 size-rotation archives; monthly archives are kept indefinitely
+# under their year-month slug so users can ask "show me April".
 try:
-    if jsonl_path.is_file() and jsonl_path.stat().st_size > 10 * 1024 * 1024:
+    if jsonl_path.is_file():
         import gzip, shutil, glob, os
-        date_tag = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
-        archive = jsonl_path.parent / f"sessions.{date_tag}.jsonl.gz"
-        with jsonl_path.open("rb") as src, gzip.open(archive, "wb") as dst:
-            shutil.copyfileobj(src, dst)
-        jsonl_path.write_text("")
-        archives = sorted(glob.glob(str(jsonl_path.parent / "sessions.*.jsonl.gz")))
-        for old in archives[:-4]:
-            try: os.remove(old)
-            except OSError: pass
+        size = jsonl_path.stat().st_size
+        now = datetime.datetime.now(datetime.timezone.utc)
+        # Detect month rollover: read first line's ts; if its month differs
+        # from the current month, archive the file under its year-month slug.
+        first_month = None
+        if size > 0:
+            try:
+                with jsonl_path.open() as f:
+                    line = f.readline().strip()
+                if line:
+                    obj = json.loads(line)
+                    ts = obj.get("ts") or ""
+                    if len(ts) >= 7:
+                        first_month = ts[:7]  # "YYYY-MM"
+            except (OSError, json.JSONDecodeError, ValueError):
+                first_month = None
+        cur_month = now.strftime("%Y-%m")
+        rotate_size  = size > 10 * 1024 * 1024
+        rotate_month = first_month is not None and first_month != cur_month
+        if rotate_size or rotate_month:
+            tag = first_month if rotate_month else now.strftime("%Y%m%d-%H%M%S")
+            archive = jsonl_path.parent / f"sessions.{tag}.jsonl.gz"
+            with jsonl_path.open("rb") as src, gzip.open(archive, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            jsonl_path.write_text("")
+            # Only the size-rotation pattern gets pruned; monthly-tagged
+            # archives (tag form "YYYY-MM", length 7) stay forever.
+            all_archives = sorted(glob.glob(str(jsonl_path.parent / "sessions.*.jsonl.gz")))
+            ts_archives = []
+            for a in all_archives:
+                stem_parts = pathlib.Path(a).name.split(".")
+                if len(stem_parts) >= 2 and len(stem_parts[1]) != 7:
+                    ts_archives.append(a)
+            for old in ts_archives[:-4]:
+                try: os.remove(old)
+                except OSError: pass
 except OSError:
     pass
 

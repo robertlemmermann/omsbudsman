@@ -9,14 +9,42 @@ set -e
 # cwd, etc. as JSON on stdin). Tolerate empty stdin in test harnesses.
 HOOK_INPUT="$(cat 2>/dev/null || true)"
 
-# Locate project root: git toplevel, fall back to cwd.
-PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# Locate project root via explicit markers — never let bare `pwd` define
+# project identity (audit P2.3). Walk up from the current directory looking
+# for git, an existing .claude/memory, or a known stack manifest.
+find_project_root() {
+  local dir="$PWD"
+  while [ "$dir" != "/" ] && [ -n "$dir" ]; do
+    if [ -d "$dir/.git" ] || [ -f "$dir/.git" ] \
+        || [ -d "$dir/.claude/memory" ] \
+        || [ -f "$dir/package.json" ] \
+        || [ -f "$dir/pyproject.toml" ] \
+        || [ -f "$dir/Cargo.toml" ] \
+        || [ -f "$dir/go.mod" ]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
 
-PROJECT_MEMORY_DIR="$PROJECT_ROOT/.claude/memory"
-mkdir -p "$PROJECT_MEMORY_DIR/mistakes" 2>/dev/null || true
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$PROJECT_ROOT" ]; then
+  PROJECT_ROOT="$(find_project_root || true)"
+fi
+
+if [ -n "$PROJECT_ROOT" ]; then
+  PROJECT_MEMORY_DIR="$PROJECT_ROOT/.claude/memory"
+  mkdir -p "$PROJECT_MEMORY_DIR/mistakes" 2>/dev/null || true
+else
+  # No identifiable project — operate global-only. Librarian will see an
+  # empty $LIBRARIAN_PROJECT_ROOT and skip the project tier.
+  PROJECT_MEMORY_DIR=""
+fi
 
 # Seed a project-tier INDEX.md if missing — librarian creates the rest lazily.
-if [ ! -f "$PROJECT_MEMORY_DIR/INDEX.md" ]; then
+if [ -n "$PROJECT_MEMORY_DIR" ] && [ ! -f "$PROJECT_MEMORY_DIR/INDEX.md" ]; then
   cat > "$PROJECT_MEMORY_DIR/INDEX.md" <<'EOF'
 # Memory Index — Project
 
@@ -33,7 +61,7 @@ Project-tier memory. Maintained by the librarian agent.
 EOF
 fi
 
-if [ ! -f "$PROJECT_MEMORY_DIR/mistakes/INDEX.md" ]; then
+if [ -n "$PROJECT_MEMORY_DIR" ] && [ ! -f "$PROJECT_MEMORY_DIR/mistakes/INDEX.md" ]; then
   cat > "$PROJECT_MEMORY_DIR/mistakes/INDEX.md" <<'EOF'
 # Mistakes Index — Project
 
@@ -44,7 +72,10 @@ EOF
 fi
 
 # Export env vars so subagents can locate the project tier and state dir.
-export LIBRARIAN_PROJECT_ROOT="$PROJECT_ROOT"
+# When no project root could be identified, leave LIBRARIAN_PROJECT_ROOT empty
+# so the librarian operates global-only rather than synthesizing a project
+# identity from $PWD.
+export LIBRARIAN_PROJECT_ROOT="${PROJECT_ROOT:-}"
 export LIBRARIAN_GLOBAL_ROOT="${CLAUDE_HOME:-$HOME/.claude}"
 
 STATE_DIR="$LIBRARIAN_GLOBAL_ROOT/state"
@@ -103,5 +134,9 @@ print(json.dumps({
 }))
 PY
 
-echo "[claude-multi-agent] memory tiers ready: $LIBRARIAN_GLOBAL_ROOT/memory + $PROJECT_MEMORY_DIR" >&2
+if [ -n "$PROJECT_MEMORY_DIR" ]; then
+  echo "[claude-multi-agent] memory tiers ready: $LIBRARIAN_GLOBAL_ROOT/memory + $PROJECT_MEMORY_DIR" >&2
+else
+  echo "[claude-multi-agent] memory ready (global-only — no project marker found at $PWD or above)" >&2
+fi
 exit 0

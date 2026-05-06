@@ -8,13 +8,28 @@
 #   metrics.sh --baseline            # write/update metrics/BASELINE.md
 #   metrics.sh --json                # raw JSON of the summary (for scripts)
 #   metrics.sh --days <N>            # restrict window to N days (default 7)
+#   metrics.sh --exclude-outliers    # drop top/bottom 5% before averaging
+#   metrics.sh --histograms          # text-mode 10-bucket bars per agent
+#   metrics.sh --check               # exit non-zero if last-7-days tokens-per-task
+#                                    # exceeds BASELINE by --regress-pct (default 20%)
+#   metrics.sh --regress-pct <N>     # regression threshold as a percent (default 20)
 #
-# Pricing (USD per 1M tokens; input / output) — update when Anthropic changes them.
+# Pricing is read from $CLAUDE_HOME/scripts/pricing.json (auto-updated on install).
+# If absent, a small embedded fallback table is used.
 set -euo pipefail
 
 GLOBAL_ROOT="${LIBRARIAN_GLOBAL_ROOT:-${CLAUDE_HOME:-$HOME/.claude}}"
 JSONL="$GLOBAL_ROOT/metrics/sessions.jsonl"
 BASELINE="$GLOBAL_ROOT/metrics/BASELINE.md"
+PRICING_JSON="$GLOBAL_ROOT/scripts/pricing.json"
+# Fall back to the in-repo copy if the installed copy isn't there yet (running
+# from a fresh checkout before install).
+if [ ! -f "$PRICING_JSON" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [ -f "$SCRIPT_DIR/pricing.json" ]; then
+    PRICING_JSON="$SCRIPT_DIR/pricing.json"
+  fi
+fi
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "ERROR: python3 is required for metrics reporting." >&2
@@ -29,41 +44,105 @@ fi
 MODE="summary"
 ARG=""
 DAYS=7
+EXCLUDE_OUTLIERS=0
+HISTOGRAMS=0
+REGRESS_PCT=20
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --agent)    MODE="agent";    ARG="${2:-}"; shift 2;;
-    --session)  MODE="session";  ARG="${2:-}"; shift 2;;
-    --baseline) MODE="baseline"; shift;;
-    --json)     MODE="json";     shift;;
-    --days)     DAYS="${2:-7}"; shift 2;;
-    -h|--help)  sed -n '2,12p' "$0"; exit 0;;
+    --agent)             MODE="agent";    ARG="${2:-}"; shift 2;;
+    --session)           MODE="session";  ARG="${2:-}"; shift 2;;
+    --baseline)          MODE="baseline"; shift;;
+    --json)              MODE="json";     shift;;
+    --check)             MODE="check";    shift;;
+    --days)              DAYS="${2:-7}"; shift 2;;
+    --exclude-outliers)  EXCLUDE_OUTLIERS=1; shift;;
+    --histograms)        HISTOGRAMS=1; shift;;
+    --regress-pct)       REGRESS_PCT="${2:-20}"; shift 2;;
+    -h|--help)           sed -n '2,20p' "$0"; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
 
-python3 - "$JSONL" "$BASELINE" "$MODE" "$ARG" "$DAYS" <<'PY'
+python3 - "$JSONL" "$BASELINE" "$MODE" "$ARG" "$DAYS" "$PRICING_JSON" "$EXCLUDE_OUTLIERS" "$HISTOGRAMS" "$REGRESS_PCT" <<'PY'
 import json, sys, datetime, statistics, pathlib
 
-jsonl_path  = pathlib.Path(sys.argv[1])
-baseline    = pathlib.Path(sys.argv[2])
-mode        = sys.argv[3]
-arg         = sys.argv[4]
-days        = int(sys.argv[5])
+jsonl_path       = pathlib.Path(sys.argv[1])
+baseline         = pathlib.Path(sys.argv[2])
+mode             = sys.argv[3]
+arg              = sys.argv[4]
+days             = int(sys.argv[5])
+pricing_path     = pathlib.Path(sys.argv[6]) if sys.argv[6] else None
+exclude_outliers = sys.argv[7] == "1"
+histograms       = sys.argv[8] == "1"
+regress_pct      = float(sys.argv[9])
 
-# Pricing per 1M tokens (input / output). Update when Anthropic changes them.
-PRICING = {
-    "claude-opus-4-7":      (15.00, 75.00),
-    "claude-opus-4-6":      (15.00, 75.00),
-    "claude-sonnet-4-6":    ( 3.00, 15.00),
-    "claude-haiku-4-5":     ( 1.00,  5.00),
-    "claude-haiku-4-5-20251001": (1.00, 5.00),
+# Pricing per 1M tokens (input / output). Sourced from pricing.json so users
+# can update without editing this script. Embedded fallback for stale installs.
+EMBEDDED_PRICING = {
+    "claude-opus-4-7":            (15.00, 75.00),
+    "claude-opus-4-6":            (15.00, 75.00),
+    "claude-sonnet-4-6":          ( 3.00, 15.00),
+    "claude-haiku-4-5":           ( 1.00,  5.00),
+    "claude-haiku-4-5-20251001":  ( 1.00,  5.00),
 }
-DEFAULT_PRICE = (3.00, 15.00)  # sonnet-class fallback
+EMBEDDED_DEFAULT = (3.00, 15.00)
+
+PRICING = dict(EMBEDDED_PRICING)
+DEFAULT_PRICE = EMBEDDED_DEFAULT
+PRICING_AGE_WARNING = None
+if pricing_path and pricing_path.is_file():
+    try:
+        data = json.loads(pricing_path.read_text())
+        models = data.get("models") or {}
+        if isinstance(models, dict):
+            PRICING = {k: tuple(v) for k, v in models.items() if isinstance(v, list) and len(v) == 2}
+        if isinstance(data.get("default"), list) and len(data["default"]) == 2:
+            DEFAULT_PRICE = tuple(data["default"])
+        last_updated = data.get("last_updated")
+        if last_updated:
+            try:
+                d = datetime.datetime.strptime(last_updated, "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc)
+                age = (datetime.datetime.now(datetime.timezone.utc) - d).days
+                if age > 90:
+                    PRICING_AGE_WARNING = f"pricing.json is {age} days old — refresh against Anthropic's current rates."
+            except ValueError:
+                pass
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
 
 def cost(model, input_tokens, output_tokens):
     rates = PRICING.get(model or "", DEFAULT_PRICE)
     return (input_tokens or 0) / 1e6 * rates[0] + (output_tokens or 0) / 1e6 * rates[1]
+
+def trim_outliers(xs):
+    """Drop the top and bottom 5% before averaging."""
+    if not xs or len(xs) < 20:
+        return xs
+    s = sorted(xs)
+    drop = max(1, int(round(len(s) * 0.05)))
+    return s[drop:-drop]
+
+def histogram(xs, buckets=10, width=30):
+    """Return a list of bar strings showing the distribution of xs."""
+    if not xs:
+        return []
+    lo, hi = min(xs), max(xs)
+    if lo == hi:
+        return [f"  [{lo}]: {len(xs)}"]
+    step = (hi - lo) / buckets
+    counts = [0] * buckets
+    for x in xs:
+        idx = min(buckets - 1, int((x - lo) / step))
+        counts[idx] += 1
+    cmax = max(counts) or 1
+    out = []
+    for i, c in enumerate(counts):
+        bar = "█" * int(round(c / cmax * width))
+        edge_lo = int(lo + i * step)
+        edge_hi = int(lo + (i + 1) * step)
+        out.append(f"  {edge_lo:>6}-{edge_hi:<6} {bar} {c}")
+    return out
 
 def parse_ts(s):
     if not s:
@@ -96,11 +175,13 @@ def summarize_agent(name):
     rs = [r for r in subagents if r.get("agent") == name]
     if not rs:
         return None
-    inp = [r["input_tokens"]  for r in rs if isinstance(r.get("input_tokens"),  (int,float))]
-    out = [r["output_tokens"] for r in rs if isinstance(r.get("output_tokens"), (int,float))]
+    inp_raw = [r["input_tokens"]  for r in rs if isinstance(r.get("input_tokens"),  (int,float))]
+    out_raw = [r["output_tokens"] for r in rs if isinstance(r.get("output_tokens"), (int,float))]
+    inp = trim_outliers(inp_raw) if exclude_outliers else inp_raw
+    out = trim_outliers(out_raw) if exclude_outliers else out_raw
     cr  = [r["cache_read_tokens"] or 0 for r in rs]
     blocked = sum(1 for r in rs if r.get("blocked"))
-    cache_rate = sum(cr) / sum(inp) if sum(inp) else None
+    cache_rate = sum(cr) / sum(inp_raw) if sum(inp_raw) else None
     def stat(xs):
         if not xs: return None
         s = sorted(xs)
@@ -111,7 +192,7 @@ def summarize_agent(name):
             "p95": s[min(len(s)-1, int(round(len(s)*0.95))-1 if len(s)>1 else 0)],
         }
     total_cost = sum(cost(r.get("model"), r.get("input_tokens") or 0, r.get("output_tokens") or 0) for r in rs)
-    return {
+    result = {
         "agent": name,
         "calls": len(rs),
         "input":  stat(inp),
@@ -120,6 +201,9 @@ def summarize_agent(name):
         "blocked_rate":   round(blocked / len(rs), 3),
         "total_cost_usd": round(total_cost, 4),
     }
+    if histograms:
+        result["output_histogram"] = histogram(out_raw)
+    return result
 
 def summarize_overall():
     agents = sorted({r.get("agent") for r in subagents if r.get("agent")})
@@ -166,6 +250,10 @@ def summarize_overall():
 def render_text(summary):
     lines = []
     lines.append(f"=== Multi-agent metrics — last {summary['window_days']} days ===")
+    if exclude_outliers:
+        lines.append("(top/bottom 5% trimmed from input/output stats)")
+    if PRICING_AGE_WARNING:
+        lines.append(f"WARNING: {PRICING_AGE_WARNING}")
     lines.append(f"Sessions: {summary['session_count']}    Subagent calls: {summary['subagent_calls']}")
     if summary["qa_mean_pass_rate"] is not None:
         lines.append(f"QA mean pass rate: {summary['qa_mean_pass_rate']:.0%}")
@@ -182,6 +270,9 @@ def render_text(summary):
         out = a["output"]["mean"] if a["output"] else "—"
         ch  = f"{a['cache_hit_rate']:.0%}" if a['cache_hit_rate'] is not None else "n/a"
         lines.append(f"  {a['agent']:<22} n={a['calls']:>3}  out_mean={out:>6}  cache={ch:>4}  blocked={a['blocked_rate']:.0%}  ${a['total_cost_usd']:.4f}")
+        if histograms and a.get("output_histogram"):
+            lines.append(f"    output-token distribution:")
+            lines.extend("    " + h for h in a["output_histogram"])
     lines.append("")
     lines.append("Per task class (sessions, mean input, mean output):")
     for c, v in summary["by_task_class"].items():
@@ -226,18 +317,66 @@ if mode == "json":
     print(json.dumps(summary, indent=2))
     sys.exit(0)
 
+def tokens_per_task(sessions):
+    if not sessions:
+        return None
+    totals = []
+    for s in sessions:
+        ti = s.get("total_input_tokens")  or 0
+        to = s.get("total_output_tokens") or 0
+        if ti or to:
+            totals.append(ti + to)
+    if not totals:
+        return None
+    if exclude_outliers:
+        totals = trim_outliers(totals)
+    if not totals:
+        return None
+    return statistics.fmean(totals)
+
+if mode == "check":
+    # Cost regression alarm: compare last-7-days mean tokens-per-task against
+    # the value frozen in BASELINE.md (line: "BASELINE_TOKENS_PER_TASK: <n>").
+    cur = tokens_per_task(sessions)
+    baseline_value = None
+    if baseline.is_file():
+        for line in baseline.read_text().splitlines():
+            line = line.strip()
+            if line.startswith("BASELINE_TOKENS_PER_TASK:"):
+                try:
+                    baseline_value = float(line.split(":", 1)[1].strip())
+                except ValueError:
+                    baseline_value = None
+                break
+    if cur is None:
+        print("no recent sessions to check")
+        sys.exit(0)
+    if baseline_value is None:
+        print(f"current mean tokens/task: {cur:.0f} (no BASELINE_TOKENS_PER_TASK set; run --baseline first)")
+        sys.exit(0)
+    drift = (cur - baseline_value) / baseline_value * 100
+    print(f"baseline tokens/task: {baseline_value:.0f}  current: {cur:.0f}  drift: {drift:+.1f}%  (threshold: {regress_pct:.0f}%)")
+    if drift > regress_pct:
+        print("REGRESSION: tokens/task drifted above the configured threshold.")
+        sys.exit(1)
+    sys.exit(0)
+
 if mode == "baseline":
     text = render_text(summary)
+    tpt = tokens_per_task(sessions)
+    tpt_line = f"BASELINE_TOKENS_PER_TASK: {tpt:.0f}\n" if tpt is not None else "BASELINE_TOKENS_PER_TASK: (no data)\n"
     body = (
         "# Baseline metrics\n\n"
         f"> Generated: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%SZ')} from "
         f"{summary['session_count']} sessions / {summary['subagent_calls']} subagent calls "
         f"over the last {days} days.\n\n"
-        "Reading guide:\n"
+        + tpt_line +
+        "\nReading guide:\n"
         "- `out_mean` is the average output-token count per call. Tighten the agent's cap if it drifts up.\n"
         "- `cache` is the cache-hit rate on input tokens. Low rates mean the system prompt is varying.\n"
         "- `blocked` is the rate of `BLOCKED` returns. Very high → pre-flight is too strict, or the planner is dispatching wrong.\n"
-        "- `$` is best-effort using the pricing constants embedded in metrics.sh — update them when Anthropic changes prices.\n\n"
+        "- `$` is best-effort using $CLAUDE_HOME/scripts/pricing.json — refresh that file when Anthropic changes prices.\n"
+        "- `BASELINE_TOKENS_PER_TASK` is read by `metrics.sh --check` to flag regressions above the configured threshold.\n\n"
         "```\n" + text + "\n```\n"
     )
     baseline.parent.mkdir(parents=True, exist_ok=True)

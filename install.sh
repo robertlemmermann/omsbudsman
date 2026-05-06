@@ -24,7 +24,7 @@ if [ -d "$CLAUDE_HOME" ]; then
   cp -R "$CLAUDE_HOME" "$BACKUP_DIR"
 fi
 
-mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/hooks" "$CLAUDE_HOME/memory" "$CLAUDE_HOME/state" "$CLAUDE_HOME/metrics" "$CLAUDE_HOME/scripts"
+mkdir -p "$CLAUDE_HOME/agents" "$CLAUDE_HOME/hooks" "$CLAUDE_HOME/memory" "$CLAUDE_HOME/state" "$CLAUDE_HOME/metrics" "$CLAUDE_HOME/scripts" "$CLAUDE_HOME/commands"
 
 echo "Installing agents..."
 cp "$SOURCE_DIR/agents/"*.md "$CLAUDE_HOME/agents/"
@@ -37,6 +37,11 @@ if [ -d "$SOURCE_DIR/scripts" ]; then
   echo "Installing scripts..."
   cp "$SOURCE_DIR/scripts/"* "$CLAUDE_HOME/scripts/"
   chmod +x "$CLAUDE_HOME/scripts/"*.sh 2>/dev/null || true
+fi
+
+if [ -d "$SOURCE_DIR/commands" ]; then
+  echo "Installing slash commands..."
+  cp "$SOURCE_DIR/commands/"*.md "$CLAUDE_HOME/commands/"
 fi
 
 if [ ! -f "$CLAUDE_HOME/memory/INDEX.md" ]; then
@@ -100,12 +105,14 @@ PY
 AGENT_COUNT=$(ls -1 "$CLAUDE_HOME/agents" 2>/dev/null | wc -l | tr -d ' ')
 HOOK_COUNT=$(ls -1 "$CLAUDE_HOME/hooks" 2>/dev/null | wc -l | tr -d ' ')
 SCRIPT_COUNT=$(ls -1 "$CLAUDE_HOME/scripts" 2>/dev/null | wc -l | tr -d ' ')
+COMMAND_COUNT=$(ls -1 "$CLAUDE_HOME/commands" 2>/dev/null | wc -l | tr -d ' ')
 
 echo
 echo "Install complete."
 echo "  Agents:   $AGENT_COUNT files at $CLAUDE_HOME/agents"
 echo "  Hooks:    $HOOK_COUNT files at $CLAUDE_HOME/hooks"
 echo "  Scripts:  $SCRIPT_COUNT files at $CLAUDE_HOME/scripts"
+echo "  Commands: $COMMAND_COUNT files at $CLAUDE_HOME/commands"
 echo "  Memory:   $CLAUDE_HOME/memory"
 echo "  Metrics:  $CLAUDE_HOME/metrics"
 echo "  Settings: $SETTINGS"

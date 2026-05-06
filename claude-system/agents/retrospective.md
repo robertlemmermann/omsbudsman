@@ -24,6 +24,8 @@ MEMORY_BRIEF: <the librarian brief for this session, so you know what was alread
 
 If the bundle is missing or empty → `BLOCKED: cannot retrospect: <reason>`.
 
+**Input budget.** The orchestrator caps `RECENT_ASSISTANT_TURNS` at ≈2k tokens of conversation history. If the bundle still arrives larger than that, drop the oldest assistant turns first — keep, in priority order: the failing agent's output, the prior assistant turn, then earlier turns until the budget fits. Do not ask the orchestrator for more context unless the trimmed window is clearly insufficient to identify the failure.
+
 ## Step 1: real mistake or false positive?
 
 A real mistake means a concrete, identifiable failure where the correct behavior was knowable in advance from the inputs the system had. Examples:
