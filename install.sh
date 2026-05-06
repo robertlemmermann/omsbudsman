@@ -53,12 +53,16 @@ trap 'rm -f "$FRAGMENT_RESOLVED"' EXIT
 
 HOOK_CMD_SESSION_START="$CLAUDE_HOME/hooks/session-start.sh"
 HOOK_CMD_USER_PROMPT_SUBMIT="$CLAUDE_HOME/hooks/user-prompt-submit.sh"
+HOOK_CMD_PRE_TOOL_USE="$CLAUDE_HOME/hooks/pre-tool-use.sh"
 HOOK_CMD_SUBAGENT_STOP="$CLAUDE_HOME/hooks/subagent-stop.sh"
 HOOK_CMD_STOP="$CLAUDE_HOME/hooks/stop.sh"
+STATUSLINE_CMD="$CLAUDE_HOME/scripts/statusline.sh"
 sed -e "s|{{HOOK_CMD_SESSION_START}}|$HOOK_CMD_SESSION_START|g" \
     -e "s|{{HOOK_CMD_USER_PROMPT_SUBMIT}}|$HOOK_CMD_USER_PROMPT_SUBMIT|g" \
+    -e "s|{{HOOK_CMD_PRE_TOOL_USE}}|$HOOK_CMD_PRE_TOOL_USE|g" \
     -e "s|{{HOOK_CMD_SUBAGENT_STOP}}|$HOOK_CMD_SUBAGENT_STOP|g" \
     -e "s|{{HOOK_CMD_STOP}}|$HOOK_CMD_STOP|g" \
+    -e "s|{{STATUSLINE_CMD}}|$STATUSLINE_CMD|g" \
     "$FRAGMENT_RAW" > "$FRAGMENT_RESOLVED"
 
 echo "Merging settings..."
