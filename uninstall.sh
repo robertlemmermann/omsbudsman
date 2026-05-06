@@ -47,9 +47,10 @@ SETTINGS="$CLAUDE_HOME/settings.json"
 if [ -f "$SETTINGS" ] && command -v python3 >/dev/null 2>&1; then
   echo "Cleaning settings entries..."
   HOOKS_DIR="$CLAUDE_HOME/hooks"
-  python3 - "$SETTINGS" "$HOOKS_DIR" <<'PY'
+  SCRIPTS_DIR="$CLAUDE_HOME/scripts"
+  python3 - "$SETTINGS" "$HOOKS_DIR" "$SCRIPTS_DIR" <<'PY'
 import json, os, sys
-settings_path, hooks_dir = sys.argv[1], sys.argv[2]
+settings_path, hooks_dir, scripts_dir = sys.argv[1], sys.argv[2], sys.argv[3]
 
 with open(settings_path) as f:
     settings = json.load(f)
@@ -78,6 +79,11 @@ if not hooks:
     settings.pop("hooks", None)
 else:
     settings["hooks"] = hooks
+
+# Drop our statusLine entry, if any. Leave the user's untouched.
+sl = settings.get("statusLine")
+if isinstance(sl, dict) and scripts_dir in (sl.get("command") or ""):
+    settings.pop("statusLine", None)
 
 with open(settings_path, "w") as f:
     json.dump(settings, f, indent=2)

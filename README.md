@@ -2,7 +2,7 @@
 
 A globally-installable, persistent, self-improving multi-agent system for Claude Code. Lives in `~/.claude/`, works across any session, on any project, on macOS and Windows.
 
-**Status:** phase 6 — complete. Full agent loop, two-tier memory, retrospective self-improvement, and per-invocation telemetry with a baseline-reporting CLI. See `plans/00-master-plan.md` for the full architecture and `plans/0N-*.md` for each phase.
+**Status:** phase 7 — complete. Full agent loop, two-tier memory, retrospective self-improvement, per-invocation telemetry with a baseline-reporting CLI, and a live in-chat team status display. See `plans/00-master-plan.md` for the full architecture and `plans/0N-*.md` for each phase.
 
 ## Install
 
@@ -75,13 +75,13 @@ Uninstall:
 ```
 ~/.claude/
 ├── agents/                # 10 agent definition files
-├── hooks/                 # 8 hook scripts (4 events × 2 OS variants)
-├── scripts/               # metrics.{sh,ps1} reporting CLI
+├── hooks/                 # 10 hook scripts (5 events × 2 OS variants)
+├── scripts/               # metrics + statusline scripts (sh + ps1)
 ├── memory/                # global tier — cross-project learning
 │   └── INDEX.md           # rest is created lazily by the librarian
-├── state/                 # per-session gate state (one JSON per session)
+├── state/                 # per-session gate + team-activity state
 ├── metrics/               # sessions.jsonl (append-only telemetry) + BASELINE.md
-└── settings.json          # registers our hooks (merged with your existing config)
+└── settings.json          # registers our hooks + statusLine (merged with your existing config)
 ```
 
 Project-tier memory is created on the first session inside any project, at:
@@ -139,6 +139,24 @@ PowerShell users have the matching `metrics.ps1` with `-Agent`, `-Session`, `-Ba
 
 Pricing constants are embedded in the scripts and need a manual edit when Anthropic changes prices.
 
+## Team status line
+
+A live status line at the bottom of your terminal shows which agent is currently working, what it's doing in one phrase, and the recent flow of the team:
+
+```
+🧭 ⚙️  backend-engineer ● Implement auth middleware in src/auth.py  │  🔬✓ 📋✓ 🛡️✓ ⚙️●
+```
+
+- Emoji per agent (🧭 orchestrator · 📚 librarian · 🔬 researcher · 📋 planner · ⚙️ backend · 🎨 frontend · 🧪 test · 🛡️ qa · 🔍 auditor · 🪞 retro).
+- Colored glyph per status: yellow `●` active, green `✓` done/pass/approve, red `✗` blocked/fail, orange `↻` revise, magenta `!` escalate.
+- The trail on the right is the last 7 agents in order, so you can read the whole flow at a glance.
+
+How it works: a `PreToolUse` hook captures every `Task` dispatch into `~/.claude/state/agents-<session_id>.json` and the existing `SubagentStop` hook marks each entry done with a one-line summary. The renderer (`scripts/statusline.sh` / `.ps1`) reads that file and emits a single colored line. Zero LLM calls — the status line costs nothing.
+
+The orchestrator persona is **unchanged**: it still doesn't narrate agents inside its replies. The harness shows the team state through this separate channel.
+
+If your existing `settings.json` already defines a `statusLine`, the installer's array-merge preserves your hook entries but overwrites `statusLine` with ours. Save your previous one before installing if you want to keep it.
+
 ### Privacy / opt-out
 
 Telemetry is local-only — nothing is sent off your machine. The records contain `project_root` (filesystem path) and `task_class`, but no source-code contents and no user prompts.
@@ -155,3 +173,4 @@ To disable telemetry entirely, set `CLAUDE_MULTIAGENT_NO_METRICS=1` in your envi
 | 4. Engineers + QA + auditor | ✅ implemented | `plans/04-engineers-qa-auditor.md` |
 | 5. Retrospective + mistake learning | ✅ implemented | `plans/05-retrospective-mistake-learning.md` |
 | 6. Cost telemetry + tuning | ✅ implemented | `plans/06-cost-telemetry-tuning.md` |
+| 7. Team status display | ✅ implemented | `plans/07-team-status-display.md` |
