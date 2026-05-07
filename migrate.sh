@@ -25,7 +25,7 @@ if [ -z "$SOURCE_VERSION" ]; then
   exit 1
 fi
 
-INSTALLED_VERSION="$(cat "$CLAUDE_HOME/VERSION" 2>/dev/null | tr -d '[:space:]')"
+INSTALLED_VERSION="$([ -f "$CLAUDE_HOME/VERSION" ] && tr -d '[:space:]' < "$CLAUDE_HOME/VERSION" || true)"
 
 # semver_lte A B — returns 0 (true) when A <= B using sort -V.
 semver_lte() {
