@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="$SCRIPT_DIR/claude-system"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="$HOME/.claude.backup-$TIMESTAMP"
+SOURCE_VERSION="$(cat "$SOURCE_DIR/VERSION" 2>/dev/null | tr -d '[:space:]')"
 
 if [ ! -d "$SOURCE_DIR" ]; then
   echo "ERROR: source directory not found: $SOURCE_DIR" >&2
@@ -97,12 +98,16 @@ with open(settings_path, "w") as f:
     f.write("\n")
 PY
 
+# Write version stamp only after a fully successful install.
+[ -n "$SOURCE_VERSION" ] && printf '%s\n' "$SOURCE_VERSION" > "$CLAUDE_HOME/VERSION"
+
 AGENT_COUNT=$(ls -1 "$CLAUDE_HOME/agents" 2>/dev/null | wc -l | tr -d ' ')
 HOOK_COUNT=$(ls -1 "$CLAUDE_HOME/hooks" 2>/dev/null | wc -l | tr -d ' ')
 SCRIPT_COUNT=$(ls -1 "$CLAUDE_HOME/scripts" 2>/dev/null | wc -l | tr -d ' ')
 
 echo
 echo "Install complete."
+echo "  Version:  ${SOURCE_VERSION:-unknown}"
 echo "  Agents:   $AGENT_COUNT files at $CLAUDE_HOME/agents"
 echo "  Hooks:    $HOOK_COUNT files at $CLAUDE_HOME/hooks"
 echo "  Scripts:  $SCRIPT_COUNT files at $CLAUDE_HOME/scripts"
@@ -114,3 +119,4 @@ echo
 echo "Start a new Claude Code session to verify."
 echo "Run $CLAUDE_HOME/scripts/metrics.sh after a few sessions for cost/perf reports."
 echo "Set CLAUDE_MULTIAGENT_NO_METRICS=1 to disable telemetry."
+# TODO: migrate.ps1 (Windows in-place migration) is a follow-up; see migrate.sh for the bash equivalent.

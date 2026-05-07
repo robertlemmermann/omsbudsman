@@ -47,7 +47,27 @@ if payload.get("stop_hook_active"):
     sys.exit(0)
 
 session_id = payload.get("session_id")
+
+if skip_audit and not no_metrics:
+    skip_log = metrics_dir / "skip-audit.jsonl"
+    ts = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    record = {"ts": ts, "session_id": session_id or None, "cwd": project_root}
+    try:
+        skip_log.parent.mkdir(parents=True, exist_ok=True)
+        with skip_log.open("a") as f:
+            f.write(json.dumps(record) + "\n")
+    except OSError:
+        pass
+
 if not session_id:
+    out = {
+        "decision": "block",
+        "reason": (
+            "Stop hook: no session_id in payload — gate enforcement is OFF for this session. "
+            "Set CLAUDE_SKIP_AUDIT=1 to suppress this warning."
+        ),
+    }
+    print(json.dumps(out))
     sys.exit(0)
 
 state_path = state_dir / f"session-{session_id}.json"
