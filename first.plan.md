@@ -1,33 +1,29 @@
-# Plan 07 — Audit + Evaluation Harness
+# Plan 07-R (Revised) — Audit + Evaluation Harness
 
-> Status: **proposal, for review.** This document is an audit of the existing system
-> plus a design for an evaluation harness. It is intended to be scrutinized by an
-> independent reviewing agent before any implementation lands. Every audit finding is
-> anchored to a `file:line` so it can be verified directly.
+> Status: **implementation-ready, post-review.** This document supersedes
+> `plans/07-audit-and-eval-harness.md` (the original proposal, kept unchanged for
+> comparison). An independent adversarial review (PR #12 comment) verified every
+> finding against the repo and current Claude Code docs, confirmed the core audit,
+> and required 10 amendments — 2 of them blockers in the harness plumbing. All 10
+> are folded in below and marked `[AMENDED]`. Original findings that survived review
+> unchanged are marked `[VERIFIED]`.
 
 ## Context
 
 The system (10 agents, 4 lifecycle hooks, two-tier memory, gate enforcement,
 retrospective mistake-learning, local telemetry) is functionally complete through all 6
-planned phases (`plans/00-master-plan.md`). Two things are now needed:
+planned phases (`plans/00-master-plan.md`). Two things are needed:
 
 1. **A rigorous audit** across five axes — general improvements, token-efficiency
    maximization, token *reduction* by offloading deterministic work to hook scripts,
-   security, and inter-agent communication (including whether responsibility/ownership
-   has holes and whether the messaging harness can be made leaner without losing
-   quality).
-2. **An evaluation harness** so any future change to the system gets benchmarked for
-   how it performed and whether the change was actually *adopted* (behavior changed as
-   intended). This mirrors Anthropic's `skill-creator` eval methodology
-   (deterministic + LLM-judge graders, with/without paired comparison, iteration
-   benchmarking).
+   security, and inter-agent communication (ownership holes + a leaner messaging
+   harness without quality loss).
+2. **An evaluation harness** so any change to the system gets benchmarked for
+   performance and *adoption* (behavior changed as intended), mirroring Anthropic's
+   `skill-creator` eval methodology.
 
-Intended outcome: a measurable, defensible system where prompt/hook edits are validated
-against a benchmark instead of by intuition, plus a prioritized fix list from the audit.
-
-**Decided scope for the follow-up implementation:** full scope (harness + all Part A
-fixes + A5 mobile repackaging), harness built first. Runner drives the system via
-headless `claude -p`.
+**Decided scope:** full scope (harness + all Part A fixes + A5 mobile repackaging).
+Runner drives the system via headless `claude -p`.
 
 ---
 
@@ -35,137 +31,245 @@ headless `claude -p`.
 
 ### A1. Correctness bugs (fix regardless of everything else)
 
-1. **Env vars don't propagate between hooks/subagents.** `claude-system/hooks/session-start.sh:47-53`
-   uses `export LIBRARIAN_GLOBAL_ROOT/LIBRARIAN_PROJECT_ROOT`, but each Claude Code
-   hook runs in its own process — exports do not reach `subagent-stop.sh:19-20`,
-   `stop.sh:22-23`, `user-prompt-submit.sh:16`, or any subagent. They currently
-   survive only because the fallbacks (`$HOME/.claude`, `pwd`) happen to match locally.
-   This breaks the moment the layout isn't `~/.claude` (i.e. cloud/plugin/mobile).
-   Fix: write to `$CLAUDE_ENV_FILE` (documented mechanism) instead of `export`.
-2. **`set -e` + inline Python can abort before the guaranteed `exit 0`.**
-   `session-start.sh:6` sets `-e`; if the Python block (`:58-104`) throws, the hook
-   exits non-zero and the trailing `exit 0` (`:107`) never runs. The file's own header
-   promises "Must exit 0 so it never blocks session startup." Wrap the Python call so
-   failures are swallowed (`|| true`) or drop `set -e` in the hooks.
-3. **Stale model IDs.** Agents pin `claude-sonnet-4-6` (e.g. `planner.md:5`,
-   `backend-engineer.md:5`) and `claude-haiku-4-5`; `metrics.sh:55-61` prices
-   `claude-opus-4-7/4-6`. Current models are Opus 4.8, Sonnet 5, Haiku 4.5, Fable 5.
-   `claude-sonnet-4-6` likely no longer resolves. Refresh all model refs + the pricing
-   table.
+1. **[VERIFIED, remedy AMENDED] Env vars don't propagate between hooks/subagents.**
+   `claude-system/hooks/session-start.sh:47-48` uses
+   `export LIBRARIAN_GLOBAL_ROOT/LIBRARIAN_PROJECT_ROOT`, but each Claude Code hook
+   runs in its own process — exports reach neither the other hooks
+   (`subagent-stop.sh:19-20`, `stop.sh:22-23`, `user-prompt-submit.sh:16`) nor any
+   subagent. Review escalation: since no export ever reaches the model's Bash
+   environment and `librarian.md:17` falls back to global-only when
+   `$LIBRARIAN_PROJECT_ROOT` is unset, **the project memory tier is effectively dead
+   today** — a present-tense break of master-plan goal 1, not just a future cloud
+   concern.
+   **Fix (two parts, both required):**
+   - Write `LIBRARIAN_*` to `$CLAUDE_ENV_FILE` in the SessionStart hook. This is
+     documented to persist variables **for subsequent Bash commands only** — it fixes
+     the subagent/Bash path (librarian can finally see the project root), NOT the
+     other hooks.
+   - Each other hook must **self-derive** its roots from its own stdin payload: use
+     the payload's `cwd`, run `git rev-parse --show-toplevel` for the project root,
+     and compute the global root from its own install location — never trust an
+     inherited env var.
+   - **Windows:** `CLAUDE_ENV_FILE` semantics are documented as bash `export` lines
+     only; the `.ps1` hooks must rely solely on self-derivation from the payload
+     `cwd`. Every `.sh` change in this plan has a matching `.ps1` change.
+2. **[VERIFIED] `set -e` + inline Python can abort before the guaranteed `exit 0`.**
+   `session-start.sh:6` sets `-e`; if the Python block (`:58-104`) throws, the trailing
+   `exit 0` (`:107`) never runs. Review escalation: the real damage is not blocked
+   startup (SessionStart non-zero doesn't block) but **silent loss of the entire
+   orchestrator persona + gate-state contract injection**. All four hooks share the
+   pattern. Fix: `python3 … || true` (and PowerShell equivalent) in all hooks.
+3. **[AMENDED — original finding was wrong] Model IDs and pricing.**
+   `claude-sonnet-4-6` and `claude-haiku-4-5` are **active** models (July 2026) — the
+   original claim that they "likely no longer resolve" was false. Migrating agents to
+   newer IDs (e.g. Sonnet 5) is a **tuning change** that must go through the harness
+   (new tokenizer/behavior), not a correctness fix. The genuine bug is in
+   `claude-system/scripts/metrics.sh:55-61`: Opus is priced at $15/$75 per MTok;
+   actual Opus 4.6/4.7/4.8 pricing is **$5/$25** (Haiku $1/$5 and Sonnet $3/$15 rows
+   are correct). Fix the pricing table and add missing current model rows in both
+   `metrics.sh` and `metrics.ps1`.
+4. **[NEW, from review] Telemetry records nulls — the measurement layer doesn't
+   measure.** The documented SubagentStop hook payload carries **no** usage fields
+   (no `usage`, `input_tokens`, `output_tokens`, `model`, `duration_ms`,
+   `subagent_type`, `blocked`). `subagent-stop.sh:48-67` probes for all of these
+   speculatively, so JSONL records have null tokens/model/agent, and `metrics.sh`'s
+   cost/cache/per-agent tables plus `stop.sh`'s session summaries are largely vacuous.
+   Fix: descope the SubagentStop record to fields that actually exist in the payload
+   (session_id, timestamp, and whatever `last_assistant_message` parsing can reliably
+   yield, e.g. agent-name/BLOCKED detection from the output block), and source
+   token/model/routing data from transcripts (see Part B). Update `metrics.sh`/.ps1
+   to stop reporting fields that are always null.
+5. **[NEW, from review] `install.sh` is not idempotent — re-installs corrupt
+   settings.** `install.sh:83-91` merges settings lists with `a[k] = a[k] + v`, so
+   every re-run appends duplicate hook registrations; each hook then fires N times per
+   event (duplicated context injection, duplicated gate evaluation, duplicated
+   telemetry). The header's "Idempotent — re-runs are safe" (`install.sh:3`) is false.
+   Fix: dedupe hook entries on merge (match by command path, the same key
+   `uninstall.sh` scrubs by), in both `install.sh` and `install.ps1`. Also note:
+   backups (`~/.claude.backup-<ts>`) accumulate without pruning — add a note or a
+   `--prune` flag; and `uninstall.sh`'s settings scrub silently no-ops without
+   python3 — emit a warning.
 
-### A2. Security
+### A2. Security **[VERIFIED]**
 
-The system's security boundaries are **prompt instructions, not tool grants** — the
-single biggest security theme.
+The system's security boundaries are **prompt instructions, not tool grants**.
 
-1. **"Read-only" agents hold write-capable Bash.** `researcher.md:4` grants full
-   `Bash` while the prose (`:16-18`) says read-only only; `qa-reviewer.md:5` same.
-   Nothing enforces it — a prompt-injected or drifting agent can mutate the repo.
-   Fix: scope Bash via Claude Code permission settings (allow-list read-only commands),
-   or drop Bash from researcher/qa in favor of Read/Grep/Glob where possible.
-2. **Engineers hold unrestricted Bash + Write** (`backend-engineer.md:5` etc.). Prose
-   forbids new deps / `rm` / network, but nothing enforces it. Recommend a project-level
-   `deny` permission list for the destructive verbs the prompts already forbid.
-3. **Librarian is the "sole memory writer" by convention only** (`librarian.md:4` grants
-   Read/Write/Edit/Bash). It is told never to write outside the two memory roots
-   (`:143`), but has repo-wide write. Acceptable given it's trusted, but worth a
-   path-scoped guard once offloaded to scripts (see B).
-4. **No injection surface in hooks** (payloads are passed as argv to Python, not
-   `eval`'d) — verified clean. Good.
+1. **"Read-only" agents hold write-capable Bash.** `researcher.md:4` and
+   `qa-reviewer.md:4` grant full `Bash` while their prose demands read-only behavior
+   (`researcher.md:16-18`). Fix: scope Bash via permission settings (allow-list
+   read-only commands) or drop Bash where Read/Grep/Glob suffice.
+2. **Engineers hold unrestricted Bash + Write** (`backend-engineer.md:4` etc.). Add a
+   project-level `deny` permission list for the destructive verbs the prompts already
+   forbid. **[AMENDED]** The implementer must enumerate the exact deny entries; start
+   from: `rm -rf`, `git push`, `git reset --hard`, `curl`/`wget` (network), package
+   installs (`npm install`, `pip install`) unless the step authorizes them.
+3. **Librarian is the "sole memory writer" by convention only** (`librarian.md:4`
+   grants Read/Write/Edit/Bash vs `:143`'s prose confinement). Acceptable near-term;
+   path-scoped guard once memory ops are scripted (A3).
+4. **No shell-injection surface in hooks** (payloads passed as argv to Python, never
+   eval'd) — verified clean. **[AMENDED]** Two content-level notes from review:
+   `user-prompt-submit.sh:69-72` persists raw user prompt text that is later forwarded
+   into retrospective context (an indirect prompt-injection channel — treat
+   `retro_prompts` as untrusted data in the retrospective prompt); and
+   `session-start.sh:72-73` builds JSON by string concatenation around `session_id` —
+   use `json.dumps` throughout.
 
-### A3. Token efficiency — reduce by offloading deterministic work to scripts
+### A3. Token efficiency — offload deterministic work to scripts **[VERIFIED]**
 
-The design already tiers models and caps output well. The remaining waste is **model
-calls spent on mechanical work that a script can do for zero tokens.**
+Targets confirmed by review; note the savings claims cannot be verified from current
+telemetry (A1.4) — the harness baseline (Part B) is what makes them measurable.
 
-1. **Memory brief is a haiku subagent call every session** (`orchestrator.md:24-31`
-   spawns librarian `mode: brief`). The brief's selection logic — top-3 global by
-   recency/recurrence, top-5 project, top-5 mistakes by tag match (`librarian.md:24-29`)
-   — is deterministic. **Offload to `session-start.sh`**: read the memory files, rank,
-   and inject the brief through `additionalContext` (the hook already builds
-   `additionalContext` at `session-start.sh:84-103`). Eliminates one subagent call per
-   session — the largest single recurring token cost. *This is the highest-value change.*
-2. **Append dedup (Jaccard ≥ 0.6)** (`librarian.md:63`) is done in-model. Move the
-   similarity computation into a helper script the librarian calls; the model only
-   decides sharpen-vs-concatenate on a match.
-3. **Compact (`librarian.md:77-87`)** is ~90% deterministic (dedup, drop-by-date, sort,
-   header rewrite). Offload the mechanical passes to a script; leave only tag-merge
-   judgment to the model.
-4. **Gate-state JSON hand-written by the orchestrator** (`orchestrator.md:167` — it
-   `cat`s heredocs). The orchestrator inherits the main (expensive) model; formatting
-   JSON by hand burns its tokens. Replace with a tiny `state.sh` helper
-   (`state.sh set-qa pass`, `state.sh set-auditor approve`) so the orchestrator emits a
-   one-token command, not a JSON blob.
+1. **Memory brief as a script, not a subagent call.** The brief's selection logic
+   (`librarian.md:25-28`) is near-deterministic; move it into `session-start.sh`/.ps1
+   and inject via the existing `additionalContext` path (`session-start.sh:84-103`).
+   Eliminates one haiku subagent call per session. Highest-value change.
+2. **Append dedup (Jaccard ≥ 0.6)** (`librarian.md:63`): compute similarity in a
+   helper script; the model only decides sharpen-vs-concatenate on match.
+3. **Compact** (`librarian.md:76-87`): script the mechanical passes (dedup,
+   drop-by-date, sort, header rewrite); leave tag-merge judgment to the model.
+4. **Gate-state helper.** Replace orchestrator-hand-written JSON heredocs
+   (`orchestrator.md:167`) with `state.sh`/`state.ps1` subcommands
+   (`state set-qa pass`, `state set-auditor approve`).
 
-Already correctly offloaded (keep): correction detection (`user-prompt-submit.sh`),
-telemetry (`subagent-stop.sh`, `stop.sh`), gate enforcement (`stop.sh:62-88`).
+All new helpers ship as `.sh` **and** `.ps1` (or portable `python3` invoked by both).
 
 ### A4. Inter-agent communication & ownership
 
-The messaging protocol is already lean and disciplined (fixed field blocks, strict
-line/token caps, refs-not-contents, no-preamble rules). The gaps are in **ownership**,
-not verbosity.
+1. **[VERIFIED, fix AMENDED] Planner's Task grant.** `planner.md:4` grants `tools:
+   Task` while the prose forbids routing. **Trap the fix must avoid:** omitting
+   `tools:` makes the subagent **inherit all tools** (worse), and an empty list
+   **fails to launch** (v2.1.208). Fix: set `tools: Glob` — a benign, minimal grant
+   present only to satisfy the non-empty requirement — with a prose line telling the
+   planner not to use it.
+2. **[VERIFIED] No integration-coherence owner.** Engineers implement one step each;
+   QA reviews one step; the auditor doesn't open files. Nobody verifies parallel
+   changes work *together*.
+3. **[VERIFIED, decided] No whole-suite verification gate.** **Decision (was an open
+   question):** a deterministic `verify` **script** (`claude-system/scripts/verify.sh`
+   /.ps1) that runs the project's build/test command; the **orchestrator invokes it**
+   after the last QA pass and feeds its verbatim result to the auditor as a new
+   `VERIFY RESULT` input field. Script, not hook (hooks can't sit between QA and
+   auditor in the dispatch order); auditor treats a failing VERIFY RESULT as an
+   automatic `revise`. Closes #2 and #3 at zero model cost.
+4. **[VERIFIED] Task-grant smudges.** Remove Task from `qa-reviewer.md` (pass the
+   brief in the payload instead) — it keeps Read/Grep/Glob/Bash, so the
+   non-empty-tools rule is satisfied. Keep Task for `auditor` (documented researcher
+   escalation; nested subagents supported since v2.1.172) and `retrospective`.
+5. **[AMENDED — reframed] Schema conformance: measure at eval time, optionally
+   enforce at runtime.** The original claim that a grader "enforces" conformance
+   conflated measurement with enforcement. Correct framing: the eval harness
+   **measures** schema conformance on the benchmark; prompt-trimming decisions are
+   made from that data. If runtime enforcement is wanted later, the documented
+   mechanism is a **SubagentStop hook** that validates `last_assistant_message`
+   against the owning agent's output schema and emits corrective `additionalContext`.
+   Optional; not in the initial build.
+6. **[NEW, from review] Missed communication failure modes** (recorded as findings;
+   cheap mitigations in scope):
+   - **Verbatim JSON relay corruption:** `retrospective.md:100-106` emits a one-line
+     JSON payload the orchestrator must hand-copy into a librarian dispatch
+     (`orchestrator.md:140`); a mis-copy is silently dropped as
+     `BLOCKED: malformed`. Mitigation: retrospective writes the payload to a file
+     under the state dir via one Bash call; the orchestrator passes the *path*;
+     librarian reads it.
+   - **Lossy summary chain to the final gate:** the auditor judges requirement
+     coverage from twice-truncated summaries (engineer ≤50 lines → QA ≤30 lines).
+     The `verify` gate (#3) covers build/test truth; for coverage truth, add one line
+     to `auditor.md` telling it to dispatch researcher whenever COVERAGE would
+     otherwise rest on an engineer claim it cannot corroborate.
+   - **Stale brief:** MEMORY HINTS are fetched once at session start and never
+     refreshed after mid-session appends. Accepted for now; note in
+     `orchestrator.md` that post-append hints apply from the next session.
 
-1. **Planner holds `tools: Task`** (`planner.md:5`) but is defined as "You do not read
-   files. You do not investigate" and the orchestrator is the sole router. Granting Task
-   lets the planner spawn agents — an ownership violation baked into the tool grant.
-   Fix: remove Task from planner (it should emit text only).
-2. **No agent owns integration coherence.** Engineers each implement one step
-   (`backend-engineer.md:10`); QA reviews one step (`qa-reviewer.md:38`); the auditor
-   checks requirement coverage but "does not open files" (`auditor.md:10`). Nobody
-   verifies that parallel engineer changes actually compile/run *together*. **Hole.**
-3. **No whole-suite verification gate.** test-engineer runs its own tests; engineers run
-   "existing tests"; the auditor trusts QA verdicts. There is no final "does the whole
-   build/test still pass" gate. Recommend a deterministic **verification step** (a
-   `verify` hook/script that runs the project's test command and feeds the result to the
-   auditor) — this closes both #2 and #3 and is script-cheap.
-4. **Minor scope smudges:** `qa-reviewer` (`:5`) and `retrospective` (`:6`) hold Task to
-   fetch a librarian brief / re-dispatch researcher. Prefer passing the brief in the
-   payload over granting Task. `auditor` holding Task (`:6`) to spawn researcher is
-   defensible and documented — keep.
-5. **BLOCKED is a prose convention, not a checked schema.** Every agent can emit
-   `BLOCKED: <reason>`, and the orchestrator's handling is described in prose
-   (`orchestrator.md:108-115`). A machine-checkable output schema (validated by the eval
-   harness, below) lets prompts *shrink* — the belt-and-suspenders reminders can be
-   trimmed once a grader enforces conformance. This is how we make the harness leaner
-   **without** quality loss: move enforcement from repeated prose to deterministic checks.
+### A5. Mobile / distribution **[VERIFIED, scope AMENDED]**
 
-### A5. Mobile / distribution
+Nothing under `~/.claude/` carries into Claude Code cloud/mobile sessions (verified
+against web docs). Two documented paths, in order:
 
-The system installs into `~/.claude/` (`install.sh:6`); nothing under `~/.claude`
-carries into Claude Code cloud/mobile sessions (per Claude Code on the web docs: cloud
-sessions start from a fresh repo clone; user-level `~/.claude` agents/hooks/plugins do
-not carry over). The fix is repackaging as a **repo-declared plugin** (agents + hooks +
-a committed `.claude/settings.json` plugin declaration), which *does* load into cloud
-sessions. De-hardcoding `~/.claude` (A1.1) is a prerequisite. Sequenced after the eval
-harness so the repackaging can be benchmarked for regressions.
+1. **Repo-committed `.claude/`** — agents in `.claude/agents/`, hooks in the repo's
+   `.claude/settings.json` ("Part of the clone"; zero infrastructure; also exactly
+   what the eval harness fixture uses — see Part B — so this path gets exercised for
+   free).
+2. **Repo-declared plugin** (`.claude-plugin/` + marketplace declaration in committed
+   settings) — verified to install at cloud session start; requires network access to
+   the marketplace source, so it degrades under restricted network policies.
+   Preferred for multi-repo distribution once path 1 is proven.
+
+**[AMENDED] Memory persistence is a prerequisite for BOTH tiers, not just global:**
+- **Project tier in cloud:** sessions start from a fresh clone, so librarian writes to
+  `<repo>/.claude/memory/` vanish with the VM unless committed. **Decision:** in
+  cloud sessions (`CLAUDE_CODE_REMOTE` set), the end-of-session flow commits
+  `.claude/memory/` changes to the session branch so they ride the PR. Local sessions
+  keep the current uncommitted behavior.
+- **Global tier:** **Decision (was an open question):** back it with a dedicated
+  private git repo, pulled by the SessionStart hook and pushed best-effort by the
+  Stop hook. Local-only fallback when the repo isn't configured.
+
+A1.1 (de-hardcoding `~/.claude`) is a prerequisite. Benchmark before/after
+repackaging; manual smoke test from the Claude mobile app afterward.
 
 ---
 
 ## Part B — Evaluation harness (primary new deliverable)
 
-**Goal:** a repeatable benchmark that answers, for any change to the system:
-(a) did quality hold or improve, (b) did token cost move, (c) was the change *adopted*
-(did behavior actually change as intended)?
+**Goal:** for any change to the system, answer (a) did quality hold or improve,
+(b) did token cost move, (c) was the change *adopted* (targeted behavior changed as
+intended, nothing else regressed).
 
-### Design (mirrors Anthropic `skill-creator` evals)
+### Layout
 
-**Layout** (new `evals/` tree in the repo):
 ```
 evals/
 ├── evals.json                 # case manifest: prompt, expected_behavior, assertions
-├── fixtures/                  # a small synthetic target repo the agents operate on
-│   └── sample-project/        # deterministic, checked-in, reset per run
+├── fixtures/
+│   └── sample-project/        # small deterministic target repo, reset per run
+│       └── .claude/           # THE SYSTEM UNDER TEST installs here (see Isolation)
 ├── graders/
-│   ├── deterministic.py       # schema/cap/gate/memory checks — no model calls
-│   └── judge.md               # LLM-as-judge agent for synthesis/plan/routing quality
+│   ├── deterministic.py       # schema/cap/gate/memory/transcript checks — no model calls
+│   └── judge.md               # LLM-as-judge for synthesis/plan/routing quality
 ├── runner/
-│   └── run_evals.py           # drives cases, captures transcript + telemetry
+│   ├── run_evals.py           # drives cases, captures stream-json transcript
+│   └── runner-settings.json   # scoped permission profile for headless runs
 └── results/
     └── iteration-N/           # per-run outputs, grading.json, benchmark.json/.md
 ```
 
-**Case shape** (`evals.json`, per skill-creator):
+### [AMENDED — BLOCKER B1 fix] Isolation mechanism
+
+The original design used a temp `CLAUDE_HOME`, **which the `claude` CLI does not
+read** (only this repo's own scripts honor it as a fallback) — runs would have
+silently executed against the developer's real `~/.claude`. Replacement design:
+
+- The system under test is installed **into the fixture repo's `.claude/` directory**
+  (project-scoped agents + `settings.json` hooks — fully documented, identical
+  semantics locally and in cloud, and doubles as the A5 path-1 proof).
+- The runner passes `--settings <file>` for run-scoped settings (permissions, model
+  pins) — a documented CLI flag.
+- The fixture copy is created fresh in a temp dir per trial and deleted after; the
+  developer's `~/.claude` is never touched *by design* rather than by env var.
+- `CLAUDE_CONFIG_DIR` may additionally be set to a temp dir to isolate CLI state, but
+  it is **undocumented** — the harness self-test must verify it took effect (assert
+  zero writes to the real `~/.claude` during a run) before relying on it.
+- Because hooks live in the fixture's settings, repo-relative hook paths must work —
+  which A1.1's self-derivation fix provides. **The harness therefore depends on A1.1
+  landing first** (reflected in the build order).
+
+### [AMENDED — BLOCKER B2 fix] Metrics source of truth
+
+The original design read tokens/routing/blocked-rate from the system's telemetry
+JSONL; the SubagentStop payload carries no usage data, so those fields are null
+(A1.4). Replacement: **the captured `claude -p --output-format stream-json --verbose`
+transcript is the single source of truth** for:
+- per-message `usage` blocks (real input/output/cache token counts),
+- Task tool invocations → routing (which agents ran, in what order),
+- `BLOCKED:` returns → blocked-rate,
+- model per call.
+
+`run_evals.py` parses the stream-json into a normalized `metrics.json` per trial. The
+system's own JSONL is still captured and *graded* (schema validity, record presence)
+but never used as a measurement source.
+
+### Case shape (`evals.json`)
+
 ```json
 {
   "id": "impl-add-endpoint",
@@ -173,118 +277,162 @@ evals/
   "class": "implement",
   "expected_behavior": ["routes researcher→planner→backend→qa→auditor", "auditor approves"],
   "assertions": [
-    {"name": "researcher-emits-findings-schema", "type": "programmatic"},
-    {"name": "gate-state-has-auditor-verdict", "type": "programmatic"},
-    {"name": "synthesis-leads-with-answer", "type": "llm"}
+    {"name": "researcher-emits-findings-schema", "type": "programmatic", "grader": "check_findings_schema", "severity": "gate"},
+    {"name": "gate-state-has-auditor-verdict",  "type": "programmatic", "grader": "check_gate_state",       "severity": "critical"},
+    {"name": "total-tokens-under-budget",        "type": "programmatic", "grader": "check_token_budget", "params": {"max_tokens": 150000}, "severity": "soft"},
+    {"name": "synthesis-leads-with-answer",      "type": "llm", "severity": "gate"}
   ]
 }
 ```
 
-**Two grader tiers:**
-- **Deterministic** (`graders/deterministic.py`, zero model cost) — this system is
-  unusually rich in machine-checkable contracts, which is what makes the harness cheap
-  and rigorous:
+**[AMENDED]** Every `programmatic` assertion names its grader function in
+`deterministic.py` and carries a `severity`: `critical` (any failure fails the case),
+`gate` (majority-of-trials semantics), `soft` (reported, never failing).
+
+### Graders
+
+- **Deterministic** (`graders/deterministic.py`, zero model cost):
   - Output-schema conformance: researcher `FINDINGS/GAPS/CONFIDENCE`, engineer
-    `CHANGES/RATIONALE/TESTS RUN/HANDOFF`, `VERDICT` blocks, brief `≤200 tokens`,
-    researcher `≤30 lines`, engineer `≤50 lines`.
+    `CHANGES/RATIONALE/TESTS RUN/HANDOFF`, `VERDICT` blocks; researcher ≤30 lines,
+    engineer ≤50 lines. **[AMENDED]** The brief "≤200 tokens" check uses the
+    deterministic proxy `ceil(len(text)/4)` chars-per-token — no tokenizer API call;
+    the proxy is stated in the grader so pass/fail is reproducible.
   - Gate-state transitions: `session-<id>.json` ends with non-null `auditor_verdict`
-    when `qa_verdicts` is non-empty (the exact invariant `stop.sh:68-72` enforces).
+    when `qa_verdicts` is non-empty (the invariant `stop.sh:68-73` enforces).
   - Memory mutations: appended entries match `librarian.md:111-127` block format;
-    recurrence counter increments on repeat.
-  - Efficiency gates: total tokens ≤ threshold, right agents invoked (routing),
-    `blocked` rate — **read directly from the telemetry JSONL the system already
-    emits** (`subagent-stop.sh`). The existing telemetry is the harness's ground-truth
-    backbone; no new instrumentation needed.
-- **LLM-as-judge** (`graders/judge.md`) — for synthesis quality, plan quality, and
-  routing appropriateness. Emits the skill-creator `{text, passed, evidence}` grading
-  shape.
+    recurrence increments on repeat.
+  - Transcript-derived (per B2 fix): routing correctness, token budgets, blocked-rate.
+- **LLM-as-judge** (`graders/judge.md`): synthesis quality, plan quality, routing
+  appropriateness. **[AMENDED]** Judge model pinned to `claude-haiku-4-5` (cheap,
+  stable; change only via a benchmarked revision), judge prompt checked into
+  `graders/judge.md`, output shape `{text, passed, evidence}`, pass criterion: all
+  judge assertions `passed: true`.
 
-**Paired with/without comparison** (the "adoption" measurement):
-- Run each case **with** the multi-agent system and **without** (baseline = plain Claude
-  Code on the same fixture). Report paired lift (quality delta) and token delta — exactly
-  skill-creator's `with_skill` / `without_skill` variants.
-- For iterating on the system itself, run **old vs new** variant and diff
-  `benchmark.json` across `iteration-N` dirs. "Adopted" = the targeted assertions flipped
-  in the intended direction *and* an unrelated regression set held steady.
+### [AMENDED] Trials, aggregation, thresholds
 
-**Runner (headless `claude -p`):** `run_evals.py` shells out to `claude -p` once per case
-against a fresh copy of the fixture repo, with an isolated temp `CLAUDE_HOME` per run
-(installs the system into it so runs never touch the developer's real `~/.claude`). It
-captures the transcript (`--output-format stream-json` / `--output-format json`) plus the
-telemetry JSONL that run's `CLAUDE_HOME` produced. `--dangerously-skip-permissions` (or a
-scoped permission file) is required for unattended runs; document that clearly since it
-widens the tool surface for the run. Then `deterministic.py` grades, the judge runs, and
-an `aggregate` step emits `benchmark.json` + `benchmark.md` (pass rate per assertion
-category, token/cost mean ± delta vs baseline, per-agent adoption). Baseline (`without`)
-runs use the same `claude -p` invocation with an empty `CLAUDE_HOME` (no agents/hooks).
+Agent runs are stochastic; single runs cannot distinguish regression from noise.
 
-**Seed cases (first pass, ~6–8):** one per task class the orchestrator classifies
-(`orchestrator.md:35-41`) — pure-question, plan, implement, trivial, conversational —
-plus a correction case (exercises the retrospective→librarian loop) and a memory-recall
-case (a prevention rule from a prior run is surfaced and satisfied).
+- **N = 3 trials** per case per variant (**5** for the `implement` class).
+- Aggregation: per-assertion **pass fraction** across trials. Per-case pass =
+  every `critical` assertion passes in all trials AND each `gate` assertion passes
+  in ≥2/3 trials. Token metrics report the **median** across trials.
+- **"Quality steady"** (regression gate for Part C steps): suite-level gate-assertion
+  pass rate drops ≤5 percentage points vs the previous iteration AND no `critical`
+  assertion that passed 3/3 now fails ≥2/3.
+- **"Adopted"**: the change's targeted assertions flip in the intended direction at
+  ≥2/3, with quality steady elsewhere.
+- Token deltas under 10% of the median are reported as noise, not wins.
+
+### Variants (paired comparison)
+
+- `with_system` vs `without_system` (bare fixture, no `.claude/` config) → paired
+  lift, per skill-creator's `with_skill`/`without_skill`.
+- `old` vs `new` across `iteration-N` dirs when iterating on the system itself.
+
+### Runner
+
+Per case × variant × trial: copy fixture to a temp dir → install the system into
+`<fixture>/.claude/` (with_system only) → run
+`claude -p "<prompt>" --output-format stream-json --verbose --settings runner-settings.json`
+→ capture transcript, fixture git diff, gate-state file, memory files → grade →
+aggregate into `benchmark.json` + `benchmark.md`.
+
+**[AMENDED — decided] Permissions:** a scoped `--settings` permission profile (allow
+the tools the system needs within the temp fixture; deny network and out-of-tree
+writes) instead of `--dangerously-skip-permissions`. Fall back to the latter only if
+scoped settings prove unworkable headless, documented in `evals/README.md`.
+**[AMENDED] Stop-gate handling:** the runner does **not** set `CLAUDE_SKIP_AUDIT` —
+the gate loop is part of the behavior under test. Instead each trial has a hard
+wall-clock timeout (default 10 min); a timeout is recorded as a failed trial.
+
+### Seed cases (~6–8)
+
+One per orchestrator task class (`orchestrator.md:36-41`) — pure-question, plan,
+implement, trivial, conversational — plus a correction case (retrospective→librarian
+loop) and a memory-recall case (a prevention rule seeded in fixture memory is
+surfaced and satisfied).
+
+### Fixture spec **[AMENDED]**
+
+`fixtures/sample-project/`: a small Python + Flask app (~5 files: `app.py`, one
+module, `tests/test_app.py` with pytest configured, `README.md`), with one seeded
+latent bug (an unhandled `None` path) exercised by the correction case. Python chosen
+because `python3` is already the system's only hard dependency.
 
 ---
 
 ## Part C — Build order
 
-Harness first (the measuring stick), then all Part A fixes. Committed in this order so
-each step is independently reviewable and the benchmark can attribute any regression to a
-specific change:
+1. **A1.1 env/self-derivation + A1.2 `set -e` guard + A1.5 installer idempotency.**
+   Small, mechanical; the harness fixture's repo-relative hooks depend on A1.1.
+2. **Eval harness** (Part B as amended) + seed cases + committed iteration-0 baseline.
+3. **A1.3 pricing fix + A1.4 telemetry descope** — re-run; expect no behavior change
+   (measurement-only edits).
+4. **A3 token offloads** — re-run; expect median token drop on `question`/`plan`
+   classes, quality steady.
+5. **A2 security scoping + A4 ownership/communication fixes** (planner/qa tool
+   grants, verify gate, JSON-relay-via-file, auditor corroboration line) — re-run;
+   quality steady, no BLOCKED spike.
+6. **A5 repackaging** (repo-`.claude/` path first, plugin second) + memory
+   commit-back — re-run + manual mobile smoke test.
 
-1. **Eval harness** (Part B) + `implement`/`question`/`plan` seed cases + a captured
-   pre-change baseline (`benchmark.json` at iteration-0).
-2. **A1 correctness bugs** — `$CLAUDE_ENV_FILE` propagation, `set -e` guard, model IDs.
-   Prerequisite for mobile; re-run suite, expect no regressions.
-3. **A3 token offloads** — deterministic brief in `session-start.sh`, `state.{sh,ps1}`
-   helper, scripted dedup/compact. Re-run; expect measurable token drop on
-   `question`/`plan` classes, quality steady.
-4. **A2 security scoping + A4 ownership fixes** — scoped Bash/deny lists, remove `Task`
-   from planner, add the whole-suite `verify` gate feeding the auditor. Re-run; quality
-   holds, no new BLOCKED spikes.
-5. **A5 mobile plugin repackaging** — `.claude-plugin/` manifest + repo-declared
-   `settings.json`; benchmark for regressions, then a manual smoke test from the Claude
-   mobile app on a repo that declares the plugin.
-
-Prefer **stacked commits / a sequence of small PRs** over one monolithic diff, so each
-layer can be evaluated against its benchmark delta.
+Stacked small PRs, one per numbered step, each with its benchmark delta.
 
 ---
 
 ## Files to create / modify
 
-**Create:** `evals/evals.json`, `evals/fixtures/sample-project/*`,
-`evals/graders/deterministic.py`, `evals/graders/judge.md`, `evals/runner/run_evals.py`,
-`evals/README.md`, and a `/evals` skill (`claude-system/skills/evals/SKILL.md`) to invoke
-it inline.
+**Create:** `evals/evals.json`, `evals/fixtures/sample-project/*` (incl. `.claude/`
+install target), `evals/graders/deterministic.py`, `evals/graders/judge.md`,
+`evals/runner/run_evals.py`, `evals/runner/runner-settings.json`, `evals/README.md`,
+`claude-system/scripts/state.sh` + `state.ps1`, `claude-system/scripts/verify.sh` +
+`verify.ps1`, memory helper scripts (portable `python3`, invoked from both `.sh` and
+`.ps1` wrappers), `claude-system/skills/evals/SKILL.md`.
 
-**Modify (fix phases, post-harness):** all `claude-system/hooks/*.sh` + `*.ps1`
-(env-file, `set -e` guard); `claude-system/agents/*.md` (model IDs, remove `Task` from
-planner, tighten tool grants); `claude-system/scripts/metrics.sh` + `.ps1`
-(pricing/model table); new `claude-system/scripts/state.{sh,ps1}` and
-`claude-system/scripts/mem_*.{sh,py}` helpers for the offloads; `session-start.sh`
-(deterministic brief injection).
+**Modify:** all `claude-system/hooks/*.sh` **and** `*.ps1` (self-derivation,
+`set -e` guard, env-file write, deterministic brief injection, memory commit-back);
+`claude-system/agents/planner.md` (`tools: Glob`), `qa-reviewer.md` (drop Task),
+`auditor.md` (VERIFY RESULT input + corroboration line), `orchestrator.md`
+(state-helper usage, verify dispatch, JSON-relay-via-file), `retrospective.md`
+(payload-to-file); `claude-system/scripts/metrics.sh` + `.ps1` (pricing, null-field
+descope); `install.sh` + `install.ps1` (idempotent merge, warnings);
+`settings.fragment.json` (updated command paths if needed).
 
 ## Verification
 
-- **Harness self-test:** run `run_evals.py` against the checked-in fixture with the
-  system installed; confirm `benchmark.json` is produced, deterministic assertions
-  pass/fail correctly (deliberately break one agent's schema and confirm the grader
-  catches it), and the with/without paired lift is computed.
-- **End-to-end sanity:** run the `implement` seed case; confirm the transcript shows
-  researcher→planner→engineer→qa→auditor routing (from telemetry) and the gate-state
-  file ends with a non-null auditor verdict.
-- **Regression guard for fixes:** after each Part A change, re-run the full suite;
-  require the targeted assertion(s) to flip as intended and the rest to hold — this is
-  the machine-checked definition of "adopted."
-- **Offload token check:** compare `metrics.sh --baseline` token totals before/after A3;
-  expect a measurable drop on `question`/`plan` classes (brief no longer a subagent call).
+- **Harness self-test:** run against the checked-in fixture; confirm
+  `benchmark.json` is produced; deliberately break one agent's output schema and
+  confirm the grader catches it; **assert zero writes to the real `~/.claude` during
+  a run** (B1 regression check); confirm transcript-derived token counts are non-null
+  (B2 regression check).
+- **Installer lifecycle test:** install → re-install → uninstall against a temp HOME;
+  assert hook registrations appear exactly once after re-install and are gone after
+  uninstall.
+- **End-to-end sanity:** the `implement` seed case shows
+  researcher→planner→engineer→qa→auditor routing in the transcript and a non-null
+  auditor verdict in the gate-state file.
+- **Regression guard:** after each Part C step, re-run the full suite at N trials and
+  apply the numeric "quality steady"/"adopted" definitions from Part B.
+- **Offload token check:** median tokens on `question`/`plan` classes drop after
+  step 4 — measured from transcripts, not the system's own telemetry.
 
-## Open questions for the reviewer
+## Resolved questions (previously open)
 
-- Global-tier memory has no durable home on an ephemeral cloud VM. Options: (a) back it
-  with a dedicated private git repo the librarian syncs at session start/end, or
-  (b) demote it to local-only best-effort. A5 assumes this is resolved before mobile.
-- The `claude -p` runner needs `--dangerously-skip-permissions` for unattended runs.
-  Is a scoped permission file preferred instead, accepting some manual approvals?
-- Is the `verify` gate (A4.3) better as a hook (runs automatically) or a dedicated
-  agent step the planner must include?
+1. **Global-tier memory on ephemeral VMs:** git-backed private repo, pulled at
+   SessionStart, pushed best-effort at Stop; local-only fallback. Project tier:
+   committed back on the session branch in cloud sessions.
+2. **Runner permissions:** scoped `--settings` permission profile over
+   `--dangerously-skip-permissions`; fallback documented if unworkable.
+3. **Verify gate:** deterministic script invoked by the orchestrator between the last
+   QA pass and the auditor; result passed to the auditor as `VERIFY RESULT`; failing
+   result → automatic `revise`.
+
+## Review traceability
+
+Independent review verdict: *implement with amendments* (2 blockers, 8 majors). All
+10 amendments are incorporated: B1 → Isolation mechanism; B2 → Metrics source of
+truth + A1.4; M1 → A1.1; M2 → A4.1; M3 → A1.3; M4 → A1.5; M5 → Trials/thresholds;
+M6 → A4.5; M7 → A4.6; M8 → A5 memory decisions. Minor findings (line anchors, `.ps1`
+parity, `--verbose`, non-plugin A5 path, permission-flag resolution) are folded into
+their sections. The original, pre-review proposal remains unchanged at
+`plans/07-audit-and-eval-harness.md`; the full review text is on PR #12.
