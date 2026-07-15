@@ -14,7 +14,6 @@ def multiply(a, b):
 
 
 def divide(a, b):
-    # Seeded latent bug: no zero-divisor handling (see SEEDED-BUG.md).
     return a / b
 
 

@@ -253,17 +253,33 @@ def run_trial(case, model, timeout, workdir, keep):
 
 
 def snapshot_home():
+    """Snapshot the SENSITIVE parts of the real ~/.claude.
+
+    The isolation claim (plan §8.2) is that the system under test never
+    touches the developer's agents/config/memory. The CLI's own session
+    bookkeeping (projects/, history, statsig, todos) is redirected via
+    CLAUDE_CONFIG_DIR — and a concurrently-running host session (e.g. the
+    harness itself launched from inside Claude Code) legitimately writes
+    there, so only the sensitive subset is watched.
+    """
     real = Path.home() / ".claude"
     if not real.exists():
         return None
+    sensitive = ["settings.json", "CLAUDE.md", "agents", "commands",
+                 "hooks", "memory", "skills"]
     entries = []
-    for path in sorted(real.rglob("*")):
-        try:
-            stat = path.stat()
-            entries.append((str(path), stat.st_mtime_ns if path.is_file() else 0,
-                            stat.st_size if path.is_file() else 0))
-        except OSError:
+    for name in sensitive:
+        target = real / name
+        if not target.exists():
             continue
+        paths = [target] if target.is_file() else sorted(target.rglob("*"))
+        for path in paths:
+            try:
+                stat = path.stat()
+                entries.append((str(path), stat.st_mtime_ns if path.is_file() else 0,
+                                stat.st_size if path.is_file() else 0))
+            except OSError:
+                continue
     return tuple(entries)
 
 
