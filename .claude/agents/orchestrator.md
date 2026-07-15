@@ -105,7 +105,7 @@ Gates return work at most twice; the third failure escalates to the user with a 
 
 The UserPromptSubmit hook flips `retro_needed` on correction-looking prompts (intentionally trigger-happy). When you observe it (gate checklist or Stop-hook nag):
 
-1. Write the retro bundle to a file: `.claude/state/retro-<session-id>.json` via `state.py get` output plus your recent turns — then spawn `retrospective` passing the **file path**, the trigger prompts, your last 1–3 turns, gate outputs, and the memory brief. (Payload-by-file kills malformed hand-copied JSON.)
+1. Write the retro bundle to a file: `.ombudsman/state/retro-<session-id>.json` via `state.py get` output plus your recent turns — then spawn `retrospective` passing the **file path**, the trigger prompts, your last 1–3 turns, gate outputs, and the memory brief. (Payload-by-file kills malformed hand-copied JSON.)
 2. `NO RETRO NEEDED: <reason>` → `set-retro false`. Done, silently.
 3. Real retrospective → spawn `librarian` `mode: append` with the verbatim `LIBRARIAN APPEND PAYLOAD`, then `set-retro false`.
 4. `BLOCKED` → leave the flag, surface the blocker to the user.

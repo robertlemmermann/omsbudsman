@@ -149,8 +149,8 @@ def claude_available():
     return shutil.which("claude") is not None
 
 
-def seed_memory_rule(fixture_claude, rule):
-    topic = fixture_claude / "memory" / "mistakes" / "seeded.md"
+def seed_memory_rule(fixture_data_dir, rule):
+    topic = fixture_data_dir / "memory" / "mistakes" / "seeded.md"
     topic.parent.mkdir(parents=True, exist_ok=True)
     topic.write_text(
         "# Mistakes — seeded\n\n## seeded rule\n\n"
@@ -173,7 +173,7 @@ def run_trial(case, model, timeout, workdir, keep):
                                                   "eval-results"))
     setup = case.get("setup") or {}
     if setup.get("seed_memory_rule"):
-        seed_memory_rule(fixture / ".claude", setup["seed_memory_rule"])
+        seed_memory_rule(fixture / ".ombudsman", setup["seed_memory_rule"])
     subprocess.run(["git", "init", "-q"], cwd=str(fixture), capture_output=True)
 
     baseline = graders_mod.snapshot_fixture(fixture)

@@ -64,7 +64,7 @@ Everything else in the two plans was already convergent and is restated below.
 │   ├── subagent_stop.py          # descoped telemetry (only fields that exist)
 │   └── stop.py                   # auditor/retro gate + session summary
 ├── scripts/
-│   ├── state.py                  # gate-state helper (init/set-qa/set-auditor/…)
+│   ├── state.py                  # gate-state helper (writes .ombudsman/state)
 │   ├── verify.py                 # whole-suite verify gate (discovers + runs project tests)
 │   ├── metrics.py                # telemetry reporting + cost estimates
 │   ├── transcript.py             # stream-json transcript parser (the measurement layer)
@@ -73,7 +73,12 @@ Everything else in the two plans was already convergent and is restated below.
 │   ├── memlint.py                # memory structure/bloat report
 │   ├── pricing.json              # corrected pricing table
 │   └── toolbelt/                 # deterministic offload scripts + INDEX.md + tests/
-└── memory/                       # project-tier memory (committed)
+└── (read-only at runtime — see §3.2 rule 5)
+
+.ombudsman/                       # writable runtime home, created lazily by the hook
+├── memory/                       # project-tier memory (committed, librarian-owned)
+├── state/                        # gate state, activity, retro bundles (gitignored)
+└── metrics/                      # sessions.jsonl, baseline.json (gitignored)
 ```
 
 Repo-level (not copied by adopters): `harness/`, `.github/`, `README.md`, this plan,
@@ -90,8 +95,14 @@ Repo-level (not copied by adopters): `harness/`, `.github/`, `README.md`, this p
 3. **No hook may hard-fail.** Every hook body runs inside a catch-all wrapper; an
    exception can never block a session or suppress context injection.
 4. **No interactive steps** anywhere in the runtime path — mobile sessions are headless.
-5. Runtime state (`.claude/state/`, `.claude/metrics/`) is gitignored; memory
-   (`.claude/memory/`) is committed and rides the session branch/PR in cloud sessions.
+5. **All writable runtime data lives in `.ombudsman/`, never `.claude/`.**
+   Verified platform constraint: Claude Code's sensitive-file protection blocks
+   agent writes under `.claude/` in headless sessions and allow-rules cannot
+   override it — so `.claude/` is read-only config (which the platform guard
+   then protects for us: no agent can silently edit its own definition), and
+   the SessionStart hook lazily creates `.ombudsman/` with `memory/`
+   (committed; rides the session branch/PR) plus `state/` and `metrics/`
+   (gitignored). Adoption still copies only `.claude/`.
 6. Windows hook invocation (`python3` vs `py`) is an open risk verified by the Windows
    CI job, not by convention.
 
@@ -182,7 +193,7 @@ confirm the drop, or the rule is wrong and a retrospective entry says so.
 
 ## 6. Memory
 
-- **Project tier (primary, committed):** `.claude/memory/` — facts, decisions,
+- **Project tier (primary, committed):** `.ombudsman/memory/` — facts, decisions,
   `mistakes/<topic>.md` prevention rules. In cloud sessions, changes ride the session
   branch/PR. This is the only tier that exists on every surface.
 - **Global tier (optional desktop enhancement):** `~/.claude/memory/` when present;

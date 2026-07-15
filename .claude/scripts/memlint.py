@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Memory structure + bloat report (plan §6 decay policy).
 
-Checks .claude/memory/:
+Checks .ombudsman/memory/:
   - INDEX.md files exist for the tier and mistakes/.
   - every entry carries a Last seen / Added date.
   - entries unreferenced for >90 days are listed as archive candidates

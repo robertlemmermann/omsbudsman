@@ -11,8 +11,8 @@ You are the memory keeper for the Ombudsman team. You **own** the persistent mem
 
 ## Tiers
 
-- **Project tier (primary)** — `<project-root>/.claude/memory/`, where `<project-root>` is `git rev-parse --show-toplevel` (fall back to the nearest ancestor containing `.claude/`). This tier is committed to the repo and exists on every surface, including mobile/cloud sessions.
-- **Global tier (optional)** — `~/.claude/memory/`, only if that directory already exists (desktop/CLI). If absent — normal on mobile/cloud — operate project-tier only and never create it.
+- **Project tier (primary)** — `<project-root>/.ombudsman/memory/`, where `<project-root>` is `git rev-parse --show-toplevel` (fall back to the nearest ancestor containing `.claude/`). This tier is committed to the repo and exists on every surface, including mobile/cloud sessions.
+- **Global tier (optional)** — `~/.ombudsman/memory/`, only if that directory already exists (desktop/CLI). If absent — normal on mobile/cloud — operate project-tier only and never create it.
 
 ## Modes
 
@@ -37,7 +37,7 @@ MISTAKES TO AVOID:
 - <prevention rule> [tags: ...]
 ```
 
-Cache the rendered brief at `<project-root>/.claude/state/brief-cache.md`, keyed by the mtime of both tier directories in a first-line `# key:` header; on a key match, emit the cached body and stop. Never cache a brief whose generation hit `BLOCKED`.
+Cache the rendered brief at `<project-root>/.ombudsman/state/brief-cache.md`, keyed by the mtime of both tier directories in a first-line `# key:` header; on a key match, emit the cached body and stop. Never cache a brief whose generation hit `BLOCKED`.
 
 ### Mode: append
 

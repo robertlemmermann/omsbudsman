@@ -55,7 +55,7 @@ and the system helpers (`state.py`, `verify.py`, `transcript.py`, `metrics.py`).
 
 ## Memory
 
-`.claude/memory/` is the committed project tier — facts, decisions, and
+`.ombudsman/memory/` is the committed project tier — facts, decisions, and
 mistake-prevention rules curated exclusively by the librarian. Because it's
 committed, it survives ephemeral mobile/cloud VMs: memory changes ride the
 session branch and get reviewed like code. An optional global tier under
@@ -83,7 +83,12 @@ Windows on every push/PR; `evals.yml` runs the behavioral layer on PRs labeled
 
 - Gate bypass for one stop (after verifying work yourself):
   `CLAUDE_SKIP_AUDIT=1`. Telemetry opt-out: `CLAUDE_OMBUDSMAN_NO_METRICS=1`.
-- Runtime state lives in `.claude/state/` and `.claude/metrics/` (gitignored).
+- All writable runtime data lives in `.ombudsman/` (created lazily by the
+  SessionStart hook — adopters still copy only `.claude/`): `memory/` is
+  committed, `state/` and `metrics/` are gitignored. `.claude/` itself is
+  read-only at runtime — Claude Code's sensitive-file protection blocks agent
+  writes under it (verified), which doubles as free enforcement that no agent
+  can silently edit its own definition.
 - Hooks are stdlib Python 3 with no-fail wrappers and self-derived paths —
   registered as `python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/<name>.py"`. On
   native Windows without a `python3` shim, alias it (`doskey python3=python $*`)

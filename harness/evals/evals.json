@@ -64,7 +64,7 @@
       "id": "memory-recall",
       "class": "question",
       "prompt": "ombudsman: Before doing anything else: what prevention rules does this project's memory currently hold? List them.",
-      "expected_behavior": "Surfaces the seeded prevention rule from .claude/memory without editing anything.",
+      "expected_behavior": "Surfaces the seeded prevention rule from .ombudsman/memory without editing anything.",
       "setup": {"seed_memory_rule": "Always guard divide() against a zero divisor before calling it."},
       "assertions": [
         {"grader": "answer_mentions", "args": {"needles": ["zero"]}, "severity": "critical"},

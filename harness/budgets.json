@@ -1,5 +1,5 @@
 {
-  "_comment": "Per-task-class and per-agent budgets (plan §7). The harness fails changes that breach them; the Stop hook warns live sessions via .claude/metrics/baseline.json. No agent can raise its own budget — changes here require evaluator approval like any agent change. Values are the iteration-0 seed; tightened as transcript baselines accumulate.",
+  "_comment": "Per-task-class and per-agent budgets (plan §7). The harness fails changes that breach them; the Stop hook warns live sessions via .ombudsman/metrics/baseline.json. No agent can raise its own budget — changes here require evaluator approval like any agent change. Values are the iteration-0 seed; tightened as transcript baselines accumulate.",
   "version": 1,
   "classes": {
     "question":       {"max_subagents": 3,  "max_output_tokens": 8000},

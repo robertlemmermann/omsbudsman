@@ -33,7 +33,8 @@ def snapshot_fixture(fixture_dir):
             continue
         rel = path.relative_to(fixture_dir)
         parts = rel.parts
-        if ".claude" in parts or ".git" in parts or "__pycache__" in parts:
+        if ".claude" in parts or ".ombudsman" in parts or ".git" in parts \
+                or "__pycache__" in parts:
             continue
         manifest[str(rel)] = hashlib.sha256(path.read_bytes()).hexdigest()
     return manifest
@@ -114,7 +115,7 @@ def seeded_bug_fixed(ctx):
 
 
 def gate_state_complete(ctx):
-    state_dir = ctx.fixture_dir / ".claude" / "state"
+    state_dir = ctx.fixture_dir / ".ombudsman" / "state"
     for path in state_dir.glob("session-*.json"):
         try:
             state = json.loads(path.read_text(encoding="utf-8"))
@@ -127,13 +128,13 @@ def gate_state_complete(ctx):
 
 
 def memory_rule_recorded(ctx):
-    mistakes = ctx.fixture_dir / ".claude" / "memory" / "mistakes"
+    mistakes = ctx.fixture_dir / ".ombudsman" / "memory" / "mistakes"
     for path in mistakes.glob("*.md"):
         if path.name == "INDEX.md":
             continue
         if re.search(r"Prevention rule:", path.read_text(encoding="utf-8")):
             return True, "prevention rule in " + path.name
-    return False, "no prevention rule recorded under .claude/memory/mistakes/"
+    return False, "no prevention rule recorded under .ombudsman/memory/mistakes/"
 
 
 def toolbelt_invoked(ctx, script):

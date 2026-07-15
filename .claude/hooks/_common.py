@@ -46,14 +46,32 @@ def claude_dir(root=None):
     return (root or project_root()) / ".claude"
 
 
+def data_dir(root=None):
+    """Writable runtime home. Lives OUTSIDE .claude/ because Claude Code's
+    sensitive-file protection blocks agent writes under .claude/ in headless
+    sessions (verified platform behavior; allow-rules cannot override it).
+    .claude/ therefore stays read-only config; everything the team writes at
+    runtime — memory, gate state, metrics — lives here."""
+    d = (root or project_root()) / ".ombudsman"
+    d.mkdir(parents=True, exist_ok=True)
+    gitignore = d / ".gitignore"
+    if not gitignore.is_file():
+        try:
+            gitignore.write_text("# Ephemeral runtime data (memory/ is committed).\n"
+                                 "state/\nmetrics/\n", encoding="utf-8")
+        except OSError:
+            pass
+    return d
+
+
 def state_dir(root=None):
-    d = claude_dir(root) / "state"
+    d = data_dir(root) / "state"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def metrics_dir(root=None):
-    d = claude_dir(root) / "metrics"
+    d = data_dir(root) / "metrics"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

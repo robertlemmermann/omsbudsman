@@ -28,7 +28,9 @@ AUDITOR = {"approve", "revise", "escalate"}
 
 
 def state_path(root, session):
-    return Path(root) / ".claude" / "state" / ("session-" + session + ".json")
+    # Writable runtime data lives in .ombudsman/ — .claude/ is read-only
+    # config at runtime (platform sensitive-file protection).
+    return Path(root) / ".ombudsman" / "state" / ("session-" + session + ".json")
 
 
 def load(path, session):

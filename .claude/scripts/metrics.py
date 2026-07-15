@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Telemetry reporting over .claude/metrics/sessions.jsonl plus transcript
+"""Telemetry reporting over .ombudsman/metrics/sessions.jsonl plus transcript
 files, with cost estimates from pricing.json.
 
 Runtime JSONL carries only fields that exist in hook payloads (no token
@@ -72,7 +72,7 @@ def price_for(pricing, model):
 
 
 def cmd_summary(root):
-    records = load_jsonl(Path(root) / ".claude" / "metrics" / "sessions.jsonl")
+    records = load_jsonl(Path(root) / ".ombudsman" / "metrics" / "sessions.jsonl")
     sessions = [r for r in records if r.get("kind") == "session"]
     subagents = [r for r in records if r.get("kind") == "subagent"]
     flags = [r for r in records if r.get("kind") == "cost_flag"]
@@ -119,7 +119,7 @@ def cmd_cost(paths):
 
 
 def cmd_trend(root):
-    metrics_dir = Path(root) / ".claude" / "metrics"
+    metrics_dir = Path(root) / ".ombudsman" / "metrics"
     records = load_jsonl(metrics_dir / "sessions.jsonl")
     sessions = [r for r in records if r.get("kind") == "session"]
     by_class = {}

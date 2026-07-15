@@ -43,7 +43,7 @@ class HookSessionTest(unittest.TestCase):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def state_file(self):
-        return self.project / ".claude" / "state" / ("session-" + SESSION + ".json")
+        return self.project / ".ombudsman" / "state" / ("session-" + SESSION + ".json")
 
     def test_01_session_start_injects_context_and_seeds_memory(self):
         proc = run_hook(self.project, "session_start.py",
@@ -55,8 +55,8 @@ class HookSessionTest(unittest.TestCase):
         self.assertIn("orchestrator.md", ctx)
         self.assertIn("session-" + SESSION + ".json", ctx)
         self.assertIn("state.py", ctx)
-        self.assertTrue((self.project / ".claude" / "memory" / "INDEX.md").is_file())
-        self.assertTrue((self.project / ".claude" / "memory" / "mistakes"
+        self.assertTrue((self.project / ".ombudsman" / "memory" / "INDEX.md").is_file())
+        self.assertTrue((self.project / ".ombudsman" / "memory" / "mistakes"
                          / "INDEX.md").is_file())
 
     def test_02_user_prompt_submit_flags_corrections_only(self):
@@ -95,7 +95,7 @@ class HookSessionTest(unittest.TestCase):
                            "prompt": "TASK: map the calculator module"},
         })
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        agents = json.loads((self.project / ".claude" / "state"
+        agents = json.loads((self.project / ".ombudsman" / "state"
                              / ("agents-" + SESSION + ".json")).read_text(encoding="utf-8"))
         self.assertEqual(agents["agents"][-1]["agent"], "researcher")
         self.assertEqual(agents["agents"][-1]["status"], "active")
@@ -107,7 +107,7 @@ class HookSessionTest(unittest.TestCase):
             "last_assistant_message": "FINDINGS:\n- average: calculator.py:21",
         })
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        jsonl = self.project / ".claude" / "metrics" / "sessions.jsonl"
+        jsonl = self.project / ".ombudsman" / "metrics" / "sessions.jsonl"
         records = [json.loads(l) for l in jsonl.read_text(encoding="utf-8").splitlines()]
         rec = records[-1]
         self.assertEqual(rec["kind"], "subagent")
@@ -116,7 +116,7 @@ class HookSessionTest(unittest.TestCase):
         # Descoped by design: no invented usage fields (plan §7).
         for forbidden in ("input_tokens", "output_tokens", "model"):
             self.assertNotIn(forbidden, rec)
-        agents = json.loads((self.project / ".claude" / "state"
+        agents = json.loads((self.project / ".ombudsman" / "state"
                              / ("agents-" + SESSION + ".json")).read_text(encoding="utf-8"))
         self.assertEqual(agents["agents"][-1]["status"], "done")
 
@@ -137,7 +137,7 @@ class HookSessionTest(unittest.TestCase):
         proc = run_hook(self.project, "stop.py", {"session_id": SESSION})
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(proc.stdout.strip(), "", "gates cleared — no block expected")
-        jsonl = self.project / ".claude" / "metrics" / "sessions.jsonl"
+        jsonl = self.project / ".ombudsman" / "metrics" / "sessions.jsonl"
         records = [json.loads(l) for l in jsonl.read_text(encoding="utf-8").splitlines()]
         summary = records[-1]
         self.assertEqual(summary["kind"], "session")

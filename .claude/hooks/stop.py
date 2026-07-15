@@ -43,7 +43,7 @@ def gate_reasons(state):
 def circuit_breaker_note(root, session_id, state):
     """Flag sessions whose subagent count exceeds 3x the class baseline.
 
-    Baseline lives at .claude/metrics/baseline.json:
+    Baseline lives at .ombudsman/metrics/baseline.json:
       {"classes": {"implement": {"median_subagents": 6}, ...}}
     Silent when no baseline exists (pre-P8 surfaces).
     """

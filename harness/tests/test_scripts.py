@@ -142,7 +142,7 @@ class LintCatchesBreakageTest(unittest.TestCase):
 
 class MemlintTest(unittest.TestCase):
     def test_clean_seed_memory(self):
-        findings = memlint.lint(REPO / ".claude" / "memory", 64)
+        findings = memlint.lint(REPO / ".ombudsman" / "memory", 64)
         self.assertEqual(findings, [])
 
     def test_flags_stale_entry(self):
@@ -166,7 +166,7 @@ class StateHelperTest(unittest.TestCase):
 
     def test_corrupt_state_file_recovers(self):
         with tempfile.TemporaryDirectory() as tmp:
-            state_dir = Path(tmp) / ".claude" / "state"
+            state_dir = Path(tmp) / ".ombudsman" / "state"
             state_dir.mkdir(parents=True)
             (state_dir / "session-x.json").write_text("{corrupt", encoding="utf-8")
             proc = subprocess.run(

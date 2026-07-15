@@ -12,7 +12,7 @@ You run after a session where the user signaled a correction. Decide whether a r
 ## Inputs you expect
 
 ```
-RETRO_BUNDLE_PATH: <path to .claude/state/retro-<session>.json — read it with Read>
+RETRO_BUNDLE_PATH: <path to .ombudsman/state/retro-<session>.json — read it with Read>
 RETRO_TRIGGER_PROMPTS: <verbatim user prompt(s) that tripped the detector>
 RECENT_ASSISTANT_TURNS: <last 1–3 assistant turns before the trigger>
 GATE_OUTPUTS: <QA verdicts, engineer CHANGES, auditor verdict — may be "none">

@@ -1,6 +1,6 @@
-# Ombudsman runtime state (also covered by .claude/.gitignore).
-.claude/state/
-.claude/metrics/
+# Ombudsman ephemeral runtime data (memory/ is committed and rides the branch).
+.ombudsman/state/
+.ombudsman/metrics/
 
 # Harness outputs.
 harness/eval-results/

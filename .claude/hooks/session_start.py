@@ -34,7 +34,7 @@ Tag → file map for project-specific prevention rules.
 
 
 def seed_memory(root):
-    mem = _common.claude_dir(root) / "memory"
+    mem = _common.data_dir(root) / "memory"
     mistakes = mem / "mistakes"
     mistakes.mkdir(parents=True, exist_ok=True)
     index = mem / "INDEX.md"

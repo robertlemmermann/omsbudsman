@@ -18,7 +18,9 @@ entrypoints, identical on every surface (mobile, web, desktop, CLI):
 
 - Deterministic work goes to scripts: see `.claude/scripts/toolbelt/INDEX.md`.
 - Gate state is maintained only via `python3 .claude/scripts/state.py …`.
-- Memory under `.claude/memory/` is written only by the librarian agent.
+- Memory under `.ombudsman/memory/` is written only by the librarian agent.
+  (Writable runtime data lives in `.ombudsman/`; `.claude/` is read-only
+  config at runtime — the platform blocks agent writes under it.)
 - Changes to `.claude/agents/**` or `.claude/hooks/**` must pass
   `python3 harness/run.py --static` before commit, and get scrutineer review.
 - Run tests with `python3 -m unittest discover -s harness/tests` plus
