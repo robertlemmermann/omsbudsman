@@ -34,6 +34,13 @@ False positive → return exactly:
 NO RETRO NEEDED: <one-line reason>
 ```
 
+**Exception — explicit learning request.** If the user explicitly asked the team
+to record the lesson ("learn from this", "remember this", "don't let this happen
+again"), never return a bare `NO RETRO NEEDED`: blame may be nobody's, but the
+instruction to remember is the user's to give. Append to your output a
+`LIBRARIAN APPEND PAYLOAD` line (same JSON shape as below, tier `project`)
+recording the user-requested prevention rule distilled from the incident.
+
 ## Step 2: root cause — pick exactly one failure mode
 
 `missed-edge-case | wrong-assumption | scope-violation | tool-misuse | memory-not-consulted | gate-skipped | other`
