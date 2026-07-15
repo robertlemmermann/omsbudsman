@@ -1,192 +1,102 @@
-# Claude Code Multi-Agent System
+# Ombudsman
 
-A globally-installable, persistent, self-improving multi-agent system for Claude Code. Lives in `~/.claude/`, works across any session, on any project, on macOS and Windows.
+A portable, self-testing multi-agent engineering team for Claude Code. The
+entire runtime lives in this repo's `.claude/` directory — **no installer** —
+so it works identically on Claude Code **mobile (iOS/Android), web, desktop,
+and CLI**, on macOS, Linux, and Windows.
 
-**Status:** phase 7 — complete. Full agent loop, two-tier memory, retrospective self-improvement, per-invocation telemetry with a baseline-reporting CLI, and a live in-chat team status display. See `plans/00-master-plan.md` for the full architecture and `plans/0N-*.md` for each phase.
+The authoritative design document is [`implementation.plan.md`](implementation.plan.md).
 
-## Install
+## Adopt it on any project (copy one directory)
 
-### macOS / Linux
+- **macOS / Linux / cloud:** `cp -r omsbudsman/.claude <your-project>/`
+- **Windows:** `robocopy omsbudsman\.claude <your-project>\.claude /E`
+- **No clone needed (mobile-friendly):** download this repo's ZIP from GitHub,
+  extract, copy `.claude/` into your project, commit.
 
-```bash
-git clone https://github.com/robertlemmermann/omsbudsman.git
-cd omsbudsman
-./install.sh
-```
+That's the whole installation. Open the project in any Claude Code surface and
+the team is live: the SessionStart hook injects the orchestrator persona and
+seeds project memory automatically.
 
-Requires `bash` and `python3` (both standard on macOS and any modern Linux).
-
-### Windows
-
-```powershell
-git clone https://github.com/robertlemmermann/omsbudsman.git
-cd omsbudsman
-.\install.ps1
-```
-
-Requires PowerShell 5.1 or later. If script execution is blocked, run once with:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-### What the installer does
-
-1. Backs up any existing `~/.claude/` to `~/.claude.backup-<UTC-timestamp>/`.
-2. Copies agent definitions to `~/.claude/agents/`.
-3. Copies hook scripts to `~/.claude/hooks/` (executable bit set on Unix).
-4. Seeds `~/.claude/memory/INDEX.md` only if not present (existing memory is never overwritten).
-5. Merges hook registrations into `~/.claude/settings.json`, preserving every existing key and **appending** to hook arrays (no clobbering).
-
-Re-running the installer is safe — it creates a fresh backup each time.
-
-### Verify
-
-Start a new Claude Code session in any directory. You should see this on stderr:
-
-```
-[claude-multi-agent] memory tiers ready: <global>/memory + <project>/.claude/memory
-```
-
-The session-start hook also creates `<project>/.claude/memory/` on first run if you're inside a git repo (or any directory).
-
-## Uninstall
-
-### macOS / Linux
+**Project already has a `.claude/`?** Copy the `agents/`, `commands/`,
+`hooks/`, `scripts/`, and `memory/` subdirectories wholesale (they're
+namespaced and won't collide), then merge the `hooks` and `permissions` keys
+of `settings.json` — automated by:
 
 ```bash
-./uninstall.sh
+python3 .claude/scripts/toolbelt/jsonmerge.py yours.json ombudsman-settings.json -o .claude/settings.json
 ```
 
-### Windows
+## Invoking the team
 
-```powershell
-.\uninstall.ps1
-```
+| How | Where it works |
+|---|---|
+| Just talk — the persona is auto-injected at session start | everywhere |
+| `/ombudsman <task>` | everywhere slash commands exist |
+| A prompt starting `ombudsman: <task>` | fallback, everywhere |
 
-Uninstall:
-- Backs up the current `~/.claude/` to `~/.claude.preuninstall-<UTC-timestamp>/`.
-- Removes only our agent files (matched by name against `claude-system/agents/`).
-- Removes only our hook files (matched by name against `claude-system/hooks/`).
-- Removes only our entries from `settings.json` (matched by command path).
-- **Preserves all memory** under `~/.claude/memory/`.
+## The team
 
-## Layout (after install)
+18 agents, routed by task size (XS/S/M/L) with risk promotion — a typo never
+pays for a 13-agent pipeline, and an auth change never skips scrutiny:
 
-```
-~/.claude/
-├── agents/                # 10 agent definition files
-├── hooks/                 # 10 hook scripts (5 events × 2 OS variants)
-├── scripts/               # metrics + statusline scripts (sh + ps1) + pricing.json
-├── commands/              # slash commands (e.g. /forget-rule)
-├── memory/                # global tier — cross-project learning
-│   ├── INDEX.md           # rest is created lazily by the librarian
-│   └── .archive/          # soft-deleted entries (compact + /forget-rule)
-├── state/                 # per-session gate + team-activity state
-├── metrics/               # sessions.jsonl (append-only telemetry) + BASELINE.md
-└── settings.json          # registers our hooks + statusLine (merged with your existing config)
-```
+- **Core:** orchestrator (router), researcher, planner, qa-reviewer (gate 1),
+  auditor (gate 2), librarian (memory), retrospective (mistake learning).
+- **Engineers:** frontend, backend, data, test.
+- **Specialists:** docs-writer, design-lead, strategist (opus, L-tasks only),
+  quant, scrutineer (red team), toolsmith, evaluator.
 
-Project-tier memory is created on the first session inside any project, at:
+Checks and balances are structural: no agent reviews its own work, proposer ≠
+approver for self-modifications, gates are enforced by hooks (`.claude/hooks/stop.py`
+refuses to end a session whose audit is missing) and by CI — not by convention.
 
-```
-<your-project>/.claude/memory/
-├── INDEX.md
-├── project.md             # (created by librarian on first append)
-├── decisions.md           # (created by librarian on first append)
-└── mistakes/
-    └── INDEX.md
-```
+Deterministic work never costs tokens: see `.claude/scripts/toolbelt/INDEX.md`
+and the system helpers (`state.py`, `verify.py`, `transcript.py`, `metrics.py`).
 
-### Should I commit `<repo>/.claude/memory/`?
+## Memory
 
-Your call. Commit it to share learning across the team; gitignore it for personal-only notes. To exclude:
+`.claude/memory/` is the committed project tier — facts, decisions, and
+mistake-prevention rules curated exclusively by the librarian. Because it's
+committed, it survives ephemeral mobile/cloud VMs: memory changes ride the
+session branch and get reviewed like code. An optional global tier under
+`~/.claude/memory/` is used when present (desktop); its absence never reduces
+functionality — degradations are stated, never silent.
 
-```gitignore
-# .gitignore
-.claude/memory/
-```
-
-## Repo layout
-
-```
-omsbudsman/
-├── plans/                 # master plan + per-phase sub-plans
-├── claude-system/         # mirrors ~/.claude/ contents
-│   ├── agents/
-│   ├── hooks/
-│   ├── memory/
-│   └── settings.fragment.json
-├── install.sh
-├── install.ps1
-├── uninstall.sh
-└── uninstall.ps1
-```
-
-## Telemetry
-
-Every subagent return appends one JSONL record to `~/.claude/metrics/sessions.jsonl`; every Stop appends a per-session summary. Records carry a `schema_version` and the optional `claude_code_version` so future schema changes don't silently corrupt baselines. The active file rotates to:
-- `sessions.<UTC-timestamp>.jsonl.gz` when it exceeds 10 MB (last 4 archives retained), OR
-- `sessions.<YYYY-MM>.jsonl.gz` at the first append after a month boundary (kept indefinitely so you can answer "show me April").
-
-Reports:
+## Self-testing harness
 
 ```bash
-~/.claude/scripts/metrics.sh                       # last 7 days summary
-~/.claude/scripts/metrics.sh --agent researcher    # per-agent breakdown
-~/.claude/scripts/metrics.sh --session <id>        # one session's flow
-~/.claude/scripts/metrics.sh --baseline            # writes/updates metrics/BASELINE.md
-~/.claude/scripts/metrics.sh --json                # raw summary JSON
-~/.claude/scripts/metrics.sh --days 30             # widen the window
-~/.claude/scripts/metrics.sh --exclude-outliers    # trim top/bottom 5% from stats
-~/.claude/scripts/metrics.sh --histograms          # text-mode bars per agent
-~/.claude/scripts/metrics.sh --check               # exit non-zero if tokens/task drift > threshold
-~/.claude/scripts/metrics.sh --regress-pct 30      # threshold for --check (default 20%)
+python3 harness/run.py --static        # free: lints, schemas, 41 unit + lifecycle tests
+python3 harness/run.py --behavioral    # golden cases headless via `claude -p` (needs credentials)
 ```
 
-`--check` reads `BASELINE_TOKENS_PER_TASK` from `metrics/BASELINE.md` (written by `--baseline`) and compares it to the last-7-days mean. Wire it into your shell's `PROMPT_COMMAND` or a CI cron to surface cost drift early.
+The behavioral layer copies `.claude/` into a temp fixture project — the exact
+adoption path — so every eval run regression-tests mobile/cloud distribution.
+Token accounting comes only from stream-json transcripts (the hook payloads
+carry no usage data, so runtime telemetry records only fields that exist).
 
-PowerShell users have the matching `metrics.ps1` with `-Agent`, `-Session`, `-Baseline`, `-Json`, `-Days` switches.
+CI (`.github/workflows/ci.yml`) runs the static layer on Linux, macOS, and
+Windows on every push/PR; `evals.yml` runs the behavioral layer on PRs labeled
+`run-evals` and weekly against `main`. PRs touching `.claude/agents/**` or
+`.claude/commands/**` fail CI without that label.
 
-Pricing lives in `~/.claude/scripts/pricing.json` (per-1M-token rates as `[input, output]` plus a `last_updated` field). Edit that file when Anthropic changes rates; `metrics.sh` warns when the file is more than 90 days old.
+## Runtime notes
 
-## Team status line
+- Gate bypass for one stop (after verifying work yourself):
+  `CLAUDE_SKIP_AUDIT=1`. Telemetry opt-out: `CLAUDE_OMBUDSMAN_NO_METRICS=1`.
+- Runtime state lives in `.claude/state/` and `.claude/metrics/` (gitignored).
+- Hooks are stdlib Python 3 with no-fail wrappers and self-derived paths —
+  registered as `python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/<name>.py"`. On
+  native Windows without a `python3` shim, alias it (`doskey python3=python $*`)
+  or adjust the six command strings in `.claude/settings.json` to `python`;
+  the Windows CI job tracks this (plan §3.2 rule 6).
+- Telemetry: `python3 .claude/scripts/metrics.py summary` /
+  `--trend`. Cost from transcripts: `metrics.py cost <transcript.jsonl>`.
 
-A live status line at the bottom of your terminal shows which agent is currently working, what it's doing in one phrase, and the recent flow of the team:
+## Repository layout
 
-```
-🧭 ⚙️  backend-engineer ● Implement auth middleware in src/auth.py  │  🔬✓ 📋✓ 🛡️✓ ⚙️●
-```
-
-- Emoji per agent (🧭 orchestrator · 📚 librarian · 🔬 researcher · 📋 planner · ⚙️ backend · 🎨 frontend · 🧪 test · 🛡️ qa · 🔍 auditor · 🪞 retro).
-- Colored glyph per status: yellow `●` active, green `✓` done/pass/approve, red `✗` blocked/fail, orange `↻` revise, magenta `!` escalate.
-- The trail on the right is the last 7 agents in order, so you can read the whole flow at a glance.
-
-How it works: a `PreToolUse` hook captures every `Task` dispatch into `~/.claude/state/agents-<session_id>.json` and the existing `SubagentStop` hook marks each entry done with a one-line summary. The renderer (`scripts/statusline.sh` / `.ps1`) reads that file and emits a single colored line. Zero LLM calls — the status line costs nothing.
-
-The orchestrator persona is **unchanged**: it still doesn't narrate agents inside its replies. The harness shows the team state through this separate channel.
-
-If your existing `settings.json` already defines a `statusLine`, the installer's array-merge preserves your hook entries but overwrites `statusLine` with ours. Save your previous one before installing if you want to keep it.
-
-### Privacy / opt-out
-
-Telemetry is local-only — nothing is sent off your machine. The records contain `project_root` (filesystem path) and `task_class`, but no source-code contents and no user prompts.
-
-To disable telemetry entirely, set `CLAUDE_MULTIAGENT_NO_METRICS=1` in your environment. Both the SubagentStop and Stop hooks honor it. Existing files in `~/.claude/metrics/` are preserved on uninstall.
-
-## Slash commands
-
-Installed to `~/.claude/commands/`:
-
-- `/forget-rule [filter]` — list recent learned mistake-prevention rules and soft-delete (archive) one. Use when a wrongly-learned rule is polluting your sessions. The archived entry lives at `<tier>/.archive/forget-<UTC-date>.md` and can be restored by hand.
-
-## Roadmap
-
-| Phase | Status | Sub-plan |
-|---|---|---|
-| 1. Skeleton + installer | ✅ implemented | `plans/01-skeleton-and-installer.md` |
-| 2. Librarian + memory | ✅ implemented | `plans/02-librarian-and-memory.md` |
-| 3. Orchestrator + researcher + planner | ✅ implemented | `plans/03-orchestrator-research-planner.md` |
-| 4. Engineers + QA + auditor | ✅ implemented | `plans/04-engineers-qa-auditor.md` |
-| 5. Retrospective + mistake learning | ✅ implemented | `plans/05-retrospective-mistake-learning.md` |
-| 6. Cost telemetry + tuning | ✅ implemented | `plans/06-cost-telemetry-tuning.md` |
-| 7. Team status display | ✅ implemented | `plans/07-team-status-display.md` |
+| Path | What |
+|---|---|
+| `.claude/` | **The product** — copy this directory to adopt |
+| `harness/` | Self-testing harness (dev asset, not copied) |
+| `implementation.plan.md` | The single authoritative plan |
+| `plans/` | Historical phase plans + archived source plans |

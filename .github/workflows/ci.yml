@@ -1,0 +1,61 @@
+name: ci
+
+# Free deterministic layer (plan §8.4): lints, schema validation, unit tests,
+# and the copy-over lifecycle test, on all three OSes. The Windows job is the
+# §3.2(6) hook-invocation verification — parity by machine, not convention.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Static layer (lints, schemas, unit + lifecycle tests)
+        run: python harness/run.py --static
+      - name: Docs check — README references real paths
+        shell: python
+        run: |
+          import re, pathlib, sys
+          readme = pathlib.Path("README.md").read_text(encoding="utf-8")
+          missing = []
+          for ref in re.findall(r"`(\.claude/[\w./-]+|harness/[\w./-]+)`", readme):
+              if not pathlib.Path(ref.rstrip("/")).exists():
+                  missing.append(ref)
+          if missing:
+              sys.exit("README references missing paths: " + ", ".join(missing))
+          print("README path references OK")
+
+  evals-label-guard:
+    # Any PR touching agents/skills/commands must carry the run-evals label
+    # so the behavioral layer gates it (plan §8.4 branch-protection policy).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require run-evals label on agent/command changes
+        shell: bash
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          changed=$(git diff --name-only "$base" "$head" -- '.claude/agents/**' '.claude/commands/**' || true)
+          if [ -n "$changed" ] && [[ ",$LABELS," != *",run-evals,"* ]]; then
+            echo "This PR changes team behavior files but lacks the 'run-evals' label:"
+            echo "$changed"
+            exit 1
+          fi
+          echo "label guard OK"

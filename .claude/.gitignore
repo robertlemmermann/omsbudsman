@@ -1,0 +1,6 @@
+# Ombudsman runtime state — ephemeral, never committed.
+state/
+metrics/
+eval-results/
+*.tmp
+__pycache__/

@@ -1,0 +1,48 @@
+[
+  {
+    "id": "xs-question",
+    "class": "question",
+    "verdict": "FAIL",
+    "note": "answer_mentions: final answer missing: average, calculator.py",
+    "trials": [
+      {
+        "timed_out": false,
+        "stderr_tail": [],
+        "assertions": [
+          {
+            "grader": "answer_mentions",
+            "severity": "critical",
+            "passed": false,
+            "note": "final answer missing: average, calculator.py"
+          },
+          {
+            "grader": "max_task_dispatches",
+            "severity": "gate",
+            "passed": true,
+            "note": "0 dispatches"
+          },
+          {
+            "grader": "no_file_changes",
+            "severity": "critical",
+            "passed": true,
+            "note": "no product-file changes"
+          },
+          {
+            "grader": "tokens_nonnull",
+            "severity": "critical",
+            "passed": true,
+            "note": "usage present (1668467 tokens observed)"
+          }
+        ],
+        "tokens": {
+          "input_tokens": 678,
+          "output_tokens": 2937,
+          "cache_read_input_tokens": 1664852,
+          "cache_creation_input_tokens": 137045
+        },
+        "subagents": [],
+        "num_turns": 5
+      }
+    ]
+  }
+]

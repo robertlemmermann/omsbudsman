@@ -1,0 +1,23 @@
+{
+  "_comment": "Per-task-class and per-agent budgets (plan §7). The harness fails changes that breach them; the Stop hook warns live sessions via .claude/metrics/baseline.json. No agent can raise its own budget — changes here require evaluator approval like any agent change. Values are the iteration-0 seed; tightened as transcript baselines accumulate.",
+  "version": 1,
+  "classes": {
+    "question":       {"max_subagents": 3,  "max_output_tokens": 8000},
+    "trivial":        {"max_subagents": 3,  "max_output_tokens": 8000},
+    "conversational": {"max_subagents": 1,  "max_output_tokens": 2000},
+    "plan":           {"max_subagents": 4,  "max_output_tokens": 12000},
+    "implement":      {"max_subagents": 10, "max_output_tokens": 40000},
+    "fix":            {"max_subagents": 10, "max_output_tokens": 40000},
+    "other":          {"max_subagents": 6,  "max_output_tokens": 20000}
+  },
+  "agents": {
+    "strategist": {"max_invocations_per_task": 1},
+    "retrospective": {"max_invocations_per_task": 2},
+    "any": {"max_retries_per_step": 2}
+  },
+  "spend": {
+    "judge_ceiling_usd_per_run": 1.0,
+    "ab_ceiling_usd_per_pr": 10.0,
+    "adaptive_trials": [3, 5, 9]
+  }
+}
