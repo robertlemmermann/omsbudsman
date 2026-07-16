@@ -1,0 +1,49 @@
+[
+  {
+    "id": "xs-question",
+    "class": "question",
+    "verdict": "PASS",
+    "note": "1 trial(s) clean",
+    "trials": [
+      {
+        "timed_out": false,
+        "result_text": "Done. The session answered your question correctly: the `average` function at calculator.py:21 computes the mean of a list.",
+        "stderr_tail": [],
+        "assertions": [
+          {
+            "grader": "answer_mentions",
+            "severity": "critical",
+            "passed": true,
+            "note": "all needles present"
+          },
+          {
+            "grader": "max_task_dispatches",
+            "severity": "gate",
+            "passed": true,
+            "note": "0 dispatches"
+          },
+          {
+            "grader": "no_file_changes",
+            "severity": "critical",
+            "passed": true,
+            "note": "no product-file changes"
+          },
+          {
+            "grader": "tokens_nonnull",
+            "severity": "critical",
+            "passed": true,
+            "note": "usage present (958015 tokens observed)"
+          }
+        ],
+        "tokens": {
+          "input_tokens": 16652,
+          "output_tokens": 3039,
+          "cache_read_input_tokens": 938324,
+          "cache_creation_input_tokens": 79948
+        },
+        "subagents": [],
+        "num_turns": 4
+      }
+    ]
+  }
+]

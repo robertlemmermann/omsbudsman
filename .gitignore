@@ -1,3 +1,9 @@
-# Per-project memory tier created by the librarian agent.
-# Remove this entry if you want to commit and share project learning.
-.claude/memory/
+# Ombudsman ephemeral runtime data (memory/ is committed and rides the branch).
+.ombudsman/state/
+.ombudsman/metrics/
+
+# Harness outputs.
+harness/eval-results/
+
+__pycache__/
+*.pyc

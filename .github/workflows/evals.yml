@@ -1,0 +1,63 @@
+name: evals
+
+# Behavioral layer (plan §8.4): golden cases run headless against the fixture.
+# Costs money → label-gated on PRs; weekly schedule catches model drift.
+# Fork PRs never see the secret (GitHub withholds secrets from forks).
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+    paths:
+      - ".claude/**"
+      - "harness/**"
+  schedule:
+    - cron: "0 6 * * 1"   # weekly drift run against main
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: "Comma-separated case ids (empty = all)"
+        required: false
+      trials:
+        description: "Trials per case"
+        default: "3"
+
+jobs:
+  behavioral:
+    if: >
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'run-evals')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Static layer first (free, fails fast)
+        run: python harness/run.py --static
+      - name: Behavioral golden cases
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            # Visible degradation, never silent (plan §3.4): without spend
+            # authorization the behavioral layer cannot run in CI. Verdicts
+            # must then come from a maintainer-run `harness/run.py
+            # --behavioral` posted on the PR.
+            echo "::warning::behavioral layer deferred — ANTHROPIC_API_KEY secret not configured for this repo"
+            exit 0
+          fi
+          ARGS="--behavioral --trials ${{ github.event.inputs.trials || 3 }}"
+          if [ -n "${{ github.event.inputs.cases }}" ]; then
+            ARGS="$ARGS --cases ${{ github.event.inputs.cases }}"
+          fi
+          python harness/run.py $ARGS
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: harness/eval-results/
+          if-no-files-found: warn
