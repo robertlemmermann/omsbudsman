@@ -116,19 +116,24 @@ def compile_all():
 
 
 def run_unittests():
+    import io
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTests(loader.discover(str(CLAUDE_DIR / "scripts" / "toolbelt" / "tests"),
                                    top_level_dir=str(CLAUDE_DIR / "scripts" / "toolbelt" / "tests")))
     suite.addTests(loader.discover(str(HARNESS / "tests"),
                                    top_level_dir=str(HARNESS / "tests")))
-    runner = unittest.TextTestRunner(verbosity=0, stream=open(os.devnull, "w"))
+    # StringIO, not devnull: Windows consoles default to cp1252, and writing a
+    # failure description containing non-latin chars would crash the reporter.
+    runner = unittest.TextTestRunner(verbosity=0, stream=io.StringIO())
     result = runner.run(suite)
     ok = result.wasSuccessful()
     note = str(result.testsRun) + " tests"
     if not ok:
         first = (result.failures + result.errors)[0]
         note += "; first failure: " + str(first[0])
+        # Surface the traceback for CI logs, encoded safely for any console.
+        print(first[1].encode("ascii", "replace").decode("ascii"))
     return ok, note
 
 

@@ -37,7 +37,10 @@ def snapshot(path):
 
 class LifecycleTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp(prefix="ombudsman-lifecycle-")
+        # .resolve() matters on Windows: mkdtemp can return an 8.3 short path
+        # while the hooks resolve to the long form — string comparisons on
+        # paths must use one canonical spelling.
+        self.tmp = str(Path(tempfile.mkdtemp(prefix="ombudsman-lifecycle-")).resolve())
         self.project = Path(self.tmp) / "adopting-project"
         self.project.mkdir()
         (self.project / "app.py").write_text("print('host project')\n",

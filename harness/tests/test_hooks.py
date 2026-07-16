@@ -41,7 +41,7 @@ class HookSessionTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.mkdtemp(prefix="ombudsman-hooktest-")
+        cls.tmp = str(Path(tempfile.mkdtemp(prefix="ombudsman-hooktest-")).resolve())
         cls.project = Path(cls.tmp) / "proj"
         cls.project.mkdir()
         shutil.copytree(REPO / ".claude", cls.project / ".claude",

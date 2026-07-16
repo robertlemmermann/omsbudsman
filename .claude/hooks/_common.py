@@ -77,9 +77,16 @@ def metrics_dir(root=None):
 
 
 def read_payload(stdin=None):
-    """Parse the hook JSON payload from stdin. Returns {} on any problem."""
+    """Parse the hook JSON payload from stdin. Returns {} on any problem.
+
+    Reads bytes and decodes as UTF-8 explicitly: on Windows, text-mode stdin
+    defaults to cp1252, which would corrupt or reject non-latin payload text.
+    """
     try:
-        raw = (stdin or sys.stdin).read()
+        if stdin is None and hasattr(sys.stdin, "buffer"):
+            raw = sys.stdin.buffer.read().decode("utf-8", "replace")
+        else:
+            raw = (stdin or sys.stdin).read()
     except (OSError, ValueError):
         return {}
     if not raw or not raw.strip():
