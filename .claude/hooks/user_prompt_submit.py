@@ -20,9 +20,29 @@ PATTERNS = [
     r"\b(retrospective|post-?mortem|learn from this)\b",
 ]
 
+# Machine-generated turns legitimately contain words like "failed"/"fix"
+# and are not user corrections. These wrappers OPEN such turns (observed
+# verbatim in real session payloads: PR webhook events, background-task
+# notifications, stop-hook echoes), so they are matched only at the start
+# of the prompt — a marker mentioned mid-text never suppresses detection
+# (scrutineer finding: substring-anywhere would be a trivial gate bypass).
+MACHINE_MARKERS = (
+    "<github-webhook-activity>",
+    "[system notification",
+    "<task-notification>",
+    "stop hook feedback:",
+)
+
+
+def is_machine_turn(text):
+    head = text.lstrip()
+    return any(head.startswith(marker) for marker in MACHINE_MARKERS)
+
 
 def detect(prompt):
     text = prompt.lower()
+    if is_machine_turn(text):
+        return False
     for pat in PATTERNS:
         if re.search(pat, text, re.IGNORECASE | re.DOTALL):
             return True

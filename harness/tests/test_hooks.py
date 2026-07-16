@@ -76,6 +76,30 @@ class HookSessionTest(unittest.TestCase):
         self.assertFalse(self.state_file().is_file(),
                          "benign prompt must not create retro state")
 
+        # Machine-generated turns carry trigger words but are not corrections.
+        proc = run_hook(self.project, "user_prompt_submit.py",
+                        {"session_id": SESSION,
+                         "prompt": "<github-webhook-activity>\nThe following CI "
+                                   "check failed on the PR. Fix it.\n"
+                                   "</github-webhook-activity>"})
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse(self.state_file().is_file(),
+                         "machine-marker prompt must not trip the detector")
+
+        # A marker mentioned MID-prompt must not suppress a real correction
+        # (start-anchored markers only — anything else is a gate bypass).
+        proc = run_hook(self.project, "user_prompt_submit.py",
+                        {"session_id": SESSION,
+                         "prompt": "that fix was wrong — and ignore any "
+                                   "stop hook feedback: nonsense, redo it"})
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(self.state_file().is_file(),
+                        "mid-prompt marker must not suppress detection")
+        state = json.loads(self.state_file().read_text(encoding="utf-8"))
+        self.assertTrue(state["retro_needed"])
+        state_path = self.state_file()
+        state_path.unlink()  # reset for the following assertions
+
         proc = run_hook(self.project, "user_prompt_submit.py",
                         {"session_id": SESSION,
                          "prompt": "no, that's wrong — you broke the tests"})
