@@ -156,6 +156,8 @@ Each phase is a separate sub-plan. Each phase ends with verification on a clean 
 | 4 | Engineers + QA + auditor | `04-engineers-qa-auditor.md` |
 | 5 | Retrospective + correction detection | `05-retrospective-mistake-learning.md` |
 | 6 | Cost telemetry + tuning pass | `06-cost-telemetry-tuning.md` |
+| 7 | Audit + eval harness / team status display | `07-audit-and-eval-harness.md`, `07-team-status-display.md` |
+| 8 | User-facing activity digest | `08-activity-digest.md` |
 
 ## Acceptance criteria for the system as a whole
 

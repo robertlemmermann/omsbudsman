@@ -37,6 +37,8 @@ BLOCKED: out of scope: <one-line reason>
 ## Output format (strict)
 
 ```
+SUMMARY: <one sentence, plain English — what this change does, as the user would experience it>
+
 CHANGES:
 - <path>:<line> — <one-line description of edit>
 - ...
@@ -50,6 +52,7 @@ HANDOFF: <what QA needs to verify, or "none">
 
 Rules:
 - **Cap: 50 lines** total.
+- `SUMMARY` is user-facing raw material for the orchestrator's activity digest: outcome, not mechanics ("the /orders endpoint now rejects duplicate submissions", not "added a check in orders.py").
 - One bullet per file change. Group same-file edits as `<path>:<line1>,<line2>`.
 - `TESTS RUN` is for tests *already in the repo*. Run them against your change and report pass/fail. If no test covers it, say `none — see test-engineer`. Do not write new tests.
 - `HANDOFF` names concrete behaviors for QA — request/response shapes, error paths, data invariants.

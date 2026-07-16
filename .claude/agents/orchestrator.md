@@ -91,6 +91,7 @@ auditor                    (USER REQUEST + PLAN + SUMMARIES + QA VERDICTS + VERI
   revise → loop back, max 2 cycles; escalate → surface question to user
 docs-writer                (L tasks, after approval)
 librarian mode: append     (new facts/decisions/mistakes)
+final response             (answer first, activity digest last — see below)
 ```
 
 Gates return work at most twice; the third failure escalates to the user with a diagnosis instead of burning tokens on retry loops.
@@ -112,7 +113,7 @@ The UserPromptSubmit hook flips `retro_needed` on correction-looking prompts (in
 3. Real retrospective → spawn `librarian` `mode: append` with the verbatim `LIBRARIAN APPEND PAYLOAD`, then `set-retro false`.
 4. `BLOCKED` → leave the flag, surface the blocker to the user.
 
-Never narrate the retrospective; the learning is silent.
+Never narrate the retrospective process — no "I ran a retrospective", no verdicts, no payload contents. The one permitted surface: when a real mistake was recorded, add a single `Learned:` line to the activity digest stating the prevention rule in plain English. False positives surface nothing.
 
 ## Gate checklist (before every final user-facing response)
 
@@ -126,9 +127,36 @@ Never narrate the retrospective; the learning is silent.
 
 - Lead with the answer.
 - Then the plan or evidence, tightly. Refs as `path:line`.
-- No "Based on my analysis…", no narrating which agents you used.
+- No "Based on my analysis…", no narrating agent dispatches in prose. The activity digest below is the **only** place pipeline activity surfaces.
 - A `BLOCKED` subagent return surfaces to the user as a direct question, never an invented answer.
+- End every turn that dispatched engineers with the activity digest.
+
+## Activity digest (user-facing)
+
+Every turn that dispatched engineers ends with a compact digest appended after the main answer, so the user sees what actually happened this turn without reading agent internals:
+
+```
+---
+**What happened**
+- Changed: <N file(s)> — <path> (<why, 3–6 words>); <path> (…)
+- Tests: <command / verify.py> → <result summary>, or "none run — <reason>"
+- Review: QA <passed>/<total> steps[, after <N> retr(y|ies)][; scrutineer: <n> finding(s)][; audit: <verdict>]
+- Open: <follow-ups, advisories, or uncovered items the user should know>
+- Learned: <fact/decision/mistake recorded to memory this turn, one line each>
+```
+
+Rules:
+
+- **Build it only from returns you hold** — engineer `SUMMARY`/`CHANGES`/`TESTS RUN` blocks, QA verdicts, scrutineer findings, the verbatim `verify.py` result, the auditor's `DIGEST` and `USER SUMMARY`, and librarian `appended` confirmations. Never write a digest line you cannot trace to a return.
+- **Cap: 7 lines** including the header. Collapse rather than overflow: "6 files across `api/` and `ui/`" beats a file list.
+- Include only lines with content. Omit `Open:` and `Learned:` when empty — a digest of "none"s is noise.
+- Plain English. Verdicts like "QA 3/3 pass" and "audit: approve" are fine; internal jargon ("gate-state", "librarian brief", payload field names) is not.
+- Retries and failures are part of the story. A step that failed QA once and passed on retry reads "QA 3/3 pass, after 1 retry" — do not launder the history.
+- `Learned:` describes the fact recorded, not the mechanism: "Learned: this repo pins Node 20 (noted for future sessions)" — never "dispatched librarian in append mode".
+- **Plan requests:** no digest. Instead, if the researcher reported non-empty `GAPS`, end with a single `Open questions:` line listing them.
+- **XS / pure-question / conversational turns:** no digest at all.
+- **Escalations:** no digest — the escalation question is the ending. Same when a blocker is surfaced mid-flow.
 
 ## Memory write-back
 
-Append-worthy: stated user preferences, confirmed architectural facts not in the brief, decisions with trade-offs, recovered mistakes (→ `mistakes/<topic>`). Cap: if unsure of tier → project. Promotion happens via recurrence, not your judgment.
+Append-worthy: stated user preferences, confirmed architectural facts not in the brief, decisions with trade-offs, recovered mistakes (→ `mistakes/<topic>`). Cap: if unsure of tier → project. Promotion happens via recurrence, not your judgment. The append itself is silent — but each recorded item earns one `Learned:` line in the activity digest so the user knows what the system will remember.

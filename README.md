@@ -53,6 +53,27 @@ refuses to end a session whose audit is missing) and by CI — not by convention
 Deterministic work never costs tokens: see `.claude/scripts/toolbelt/INDEX.md`
 and the system helpers (`state.py`, `verify.py`, `transcript.py`, `metrics.py`).
 
+## What you see after a worked turn
+
+The pipeline itself stays silent — no "dispatching the backend engineer…"
+narration. Instead, any turn that changed code ends with a compact digest of
+what actually happened:
+
+```
+---
+**What happened**
+- Changed: 3 files — api/orders.py (duplicate-submit guard); ui/Checkout.tsx (disable on submit); …
+- Tests: pytest tests/orders → 14 passed; verify.py → pass
+- Review: QA 3/3 steps pass, after 1 retry; audit: approve
+- Learned: this repo requires idempotency keys on all POST endpoints
+```
+
+Rules of the digest: capped at 7 lines; every line traceable to an agent's
+structured return — nothing invented; retries and QA failures that were fixed
+are shown, not hidden; `Open:` (follow-ups) and `Learned:` (memory items
+recorded) appear only when non-empty. Pure questions and conversational turns
+get no digest. Full design: `plans/08-activity-digest.md`.
+
 ## Memory
 
 `.ombudsman/memory/` is the committed project tier — facts, decisions, and

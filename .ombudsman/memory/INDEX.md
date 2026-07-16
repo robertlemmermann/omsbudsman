@@ -17,5 +17,6 @@ The librarian creates each file lazily on first append; an empty layout is norma
 
 ## Recent entries
 
+- `mistakes/stale-branch-pr.md` · 1 entry · tags: `git`, `pr-workflow`, `stale-branch`, `orchestrator`
 - `mistakes/windows-ci-encoding.md` · 1 entry · tags: `windows`, `ci`, `encoding`, `unicode`, `test-harness`
 - `mistakes/windows-subprocess-env.md` · 1 entry · tags: `windows`, `ci`, `subprocess-env`, `test-harness`, `test-engineer`

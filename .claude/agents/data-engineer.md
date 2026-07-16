@@ -33,6 +33,8 @@ Out of scope → `BLOCKED: out of scope: <one-line reason>`.
 ## Output format (strict)
 
 ```
+SUMMARY: <one sentence, plain English — what this change does, as the user would experience it>
+
 CHANGES:
 - <path>:<line> — <one-line description>
 
@@ -43,7 +45,7 @@ TESTS RUN: <command + result, or "none — see test-engineer">
 HANDOFF: <data invariants for QA; rollback command for migrations>
 ```
 
-**Cap: 50 lines** total.
+**Cap: 50 lines** total. `SUMMARY` is user-facing raw material for the orchestrator's activity digest: outcome, not mechanics ("order history queries now return in milliseconds", not "added an index on orders.user_id").
 
 ## Discipline
 
