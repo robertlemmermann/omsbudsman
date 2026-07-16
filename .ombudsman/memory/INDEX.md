@@ -1,6 +1,6 @@
 # Memory Index — Project
 
-> Last updated: (none) · Entries: 0
+> Last updated: 2026-07-16 · Entries: 1
 
 Project-tier memory. Maintained by the librarian agent — the only writer.
 Committed to the repo so it persists across ephemeral mobile/cloud sessions
@@ -14,3 +14,7 @@ Committed to the repo so it persists across ephemeral mobile/cloud sessions
 - `mistakes/<topic>.md` — prevention rules for this codebase
 
 The librarian creates each file lazily on first append; an empty layout is normal.
+
+## Recent entries
+
+- `mistakes/windows-subprocess-env.md` · 1 entry · tags: `windows`, `ci`, `subprocess-env`, `test-harness`, `test-engineer`
