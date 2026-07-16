@@ -41,6 +41,14 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            # Visible degradation, never silent (plan §3.4): without spend
+            # authorization the behavioral layer cannot run in CI. Verdicts
+            # must then come from a maintainer-run `harness/run.py
+            # --behavioral` posted on the PR.
+            echo "::warning::behavioral layer deferred — ANTHROPIC_API_KEY secret not configured for this repo"
+            exit 0
+          fi
           ARGS="--behavioral --trials ${{ github.event.inputs.trials || 3 }}"
           if [ -n "${{ github.event.inputs.cases }}" ]; then
             ARGS="$ARGS --cases ${{ github.event.inputs.cases }}"

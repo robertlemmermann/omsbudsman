@@ -9,6 +9,7 @@ and the Windows/macOS parity verification when run in the CI matrix).
 6. Removing the package leaves the host project intact.
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -73,19 +74,17 @@ class LifecycleTest(unittest.TestCase):
         # 3. hooks actually execute in the adopted location
         payload = json.dumps({"session_id": "lifecycle01",
                               "cwd": str(self.project)})
+        env = dict(os.environ)
+        env["CLAUDE_PROJECT_DIR"] = str(self.project)
         for hook in hook_files:
             proc = subprocess.run(
                 [sys.executable, str(hook)], input=payload, capture_output=True,
-                text=True, timeout=60,
-                env={"CLAUDE_PROJECT_DIR": str(self.project),
-                     "PATH": "/usr/bin:/bin:/usr/local/bin"},
+                text=True, timeout=60, env=env,
             )
             self.assertEqual(proc.returncode, 0, hook.name + ": " + proc.stderr)
         start_out = subprocess.run(
             [sys.executable, str(self.project / ".claude" / "hooks" / "session_start.py")],
-            input=payload, capture_output=True, text=True, timeout=60,
-            env={"CLAUDE_PROJECT_DIR": str(self.project),
-                 "PATH": "/usr/bin:/bin:/usr/local/bin"},
+            input=payload, capture_output=True, text=True, timeout=60, env=env,
         )
         ctx = json.loads(start_out.stdout)["hookSpecificOutput"]["additionalContext"]
         self.assertIn(str(self.project), ctx,

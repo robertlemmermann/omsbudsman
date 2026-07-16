@@ -4,6 +4,7 @@ package, simulating a full session (start → prompt → dispatch → subagent
 return → stop gate).
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -15,13 +16,22 @@ REPO = Path(__file__).resolve().parents[2]
 SESSION = "testsession01"
 
 
+def hook_env(project):
+    """Environment for a hook subprocess. Inherit the real environment —
+    Windows Python needs SYSTEMROOT etc. — and point CLAUDE_PROJECT_DIR at
+    the temp project, exactly as Claude Code does."""
+    env = dict(os.environ)
+    env["CLAUDE_PROJECT_DIR"] = str(project)
+    return env
+
+
 def run_hook(project, name, payload):
     """Invoke a hook as Claude Code would: python3 <hook> with JSON stdin."""
     proc = subprocess.run(
         [sys.executable, str(project / ".claude" / "hooks" / name)],
         input=payload if isinstance(payload, str) else json.dumps(payload),
         capture_output=True, text=True, timeout=60,
-        env={"CLAUDE_PROJECT_DIR": str(project), "PATH": "/usr/bin:/bin:/usr/local/bin"},
+        env=hook_env(project),
     )
     return proc
 
