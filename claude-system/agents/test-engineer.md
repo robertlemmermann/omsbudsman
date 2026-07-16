@@ -35,6 +35,8 @@ If the step asks for production changes → `BLOCKED: out of scope: needs fronte
 ## Output format (strict)
 
 ```
+SUMMARY: <one sentence, plain English — what behavior is now covered by tests>
+
 CHANGES:
 - <path>:<line> — <one-line description of test added/updated>
 - ...
@@ -48,6 +50,7 @@ HANDOFF: <bugs surfaced, or "none">
 
 Rules:
 - **Cap: 50 lines** total.
+- `SUMMARY` is user-facing raw material for the orchestrator's activity digest: behavior covered, not test mechanics ("checkout totals are now covered against rounding errors", not "added 4 cases to checkout.spec.ts").
 - `TESTS RUN` is mandatory and must include both the new tests and a smoke run of related existing tests.
 - If a test fails because the production code is buggy, do **not** modify production code. Report it in HANDOFF with `path:line — <observed vs expected>`.
 - Snapshots: only commit a snapshot if you've manually verified the captured output is correct. Note this in RATIONALE.

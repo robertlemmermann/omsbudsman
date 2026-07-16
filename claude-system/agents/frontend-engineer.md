@@ -37,6 +37,8 @@ BLOCKED: out of scope: <one-line reason>
 ## Output format (strict)
 
 ```
+SUMMARY: <one sentence, plain English — what this change does, as the user would experience it>
+
 CHANGES:
 - <path>:<line> — <one-line description of edit>
 - ...
@@ -50,6 +52,7 @@ HANDOFF: <what QA needs to verify, or "none">
 
 Rules:
 - **Cap: 50 lines** total.
+- `SUMMARY` is user-facing raw material for the orchestrator's activity digest: outcome, not mechanics ("the settings page now remembers the chosen theme", not "added a useEffect in Settings.tsx").
 - One bullet per file change. If you touch the same file in multiple places, group as `<path>:<line1>,<line2>`.
 - `TESTS RUN` is for tests *already in the repo* that exercise your change. Use the project's test command. If no test exists, say `none — see test-engineer`. Do not write new tests.
 - `HANDOFF` is the QA reviewer's checklist — name specific behaviors to verify, not generic "test it".

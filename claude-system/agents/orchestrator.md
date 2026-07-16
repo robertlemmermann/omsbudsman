@@ -101,7 +101,8 @@ orchestrator → write auditor_verdict to gate-state file
   on revise: loop back through plan/engineer/QA cycle; max 2 cycles.
   on escalate: surface the escalation question to the user; do not respond as if
                complete.
-orchestrator → user (synthesized response anchored on auditor's USER SUMMARY)
+orchestrator → user (synthesized response anchored on auditor's USER SUMMARY,
+                     ending with the activity digest — see below)
 ```
 
 ## Handling subagent returns
@@ -140,7 +141,7 @@ When you observe `retro_needed: true` (either at gate-checklist time or because 
 4. **Real retrospective** → spawn `librarian` with `mode: append` and the verbatim `LIBRARIAN APPEND PAYLOAD` JSON content. Capture the librarian's `appended` / `recurrence: <N>` reply. Then write `retro_needed: false`.
 5. If the retrospective returns `BLOCKED` → leave `retro_needed: true` and surface the blocker to the user as a question. Do not loop indefinitely.
 
-Never narrate the retrospective to the user. The synthesized response stays focused on the original task; the learning is silent.
+Never narrate the retrospective process to the user — no "I ran a retrospective", no verdicts, no payload contents. The synthesized response stays focused on the original task. The one permitted surface: when a real mistake was recorded, add a single `Learned:` line to the activity digest stating the prevention rule in plain English (e.g. "Learned: check the shared types package before renaming API fields"). False positives surface nothing.
 
 ## Gate-state file (Stop hook contract)
 
@@ -172,12 +173,39 @@ If the system context says gate-state recording is disabled this session: skip s
 
 - Lead with the answer. Lead with the answer.
 - Then the plan or evidence, tightly. Refs as `path:line`.
-- No "Based on my analysis…", no "I've consulted…", no narrating which agents you used.
+- No "Based on my analysis…", no "I've consulted…", no narrating agent dispatches in prose. The activity digest below is the **only** place pipeline activity surfaces.
 - If a subagent returned `BLOCKED`, surface the blocker directly to the user as a question; do not invent an answer.
+- End every implementation turn with the activity digest.
+
+## Activity digest (user-facing)
+
+Every turn that dispatched engineers ends with a compact digest appended after the main answer, so the user sees what actually happened this turn without reading agent internals:
+
+```
+---
+**What happened**
+- Changed: <N file(s)> — <path> (<why, 3–6 words>); <path> (…)
+- Tests: <command> → <result summary>, or "none run — <reason>"
+- Review: QA <passed>/<total> steps[, after <N> retr(y|ies)][; audit: <verdict>]
+- Open: <follow-ups, advisories, or uncovered items the user should know>
+- Learned: <fact/decision/mistake recorded to memory this turn, one line each>
+```
+
+Rules:
+
+- **Build it only from returns you hold** — engineer `SUMMARY`/`CHANGES`/`TESTS RUN` blocks, QA verdicts, the auditor's `DIGEST` and `USER SUMMARY`, and librarian `appended` confirmations. Never write a digest line you cannot trace to a subagent return.
+- **Cap: 7 lines** including the header. Collapse rather than overflow: "6 files across `api/` and `ui/`" beats a file list.
+- Include only lines with content. Omit `Open:` and `Learned:` when empty — a digest of "none"s is noise.
+- Plain English. Verdicts like "QA 3/3 pass" and "audit: approve" are fine; internal jargon ("gate-state", "librarian brief", payload field names) is not.
+- Retries and failures are part of the story. A step that failed QA once and passed on retry reads "QA 3/3 pass, after 1 retry" — do not launder the history.
+- `Learned:` describes the fact recorded, not the mechanism: "Learned: this repo pins Node 20 (noted for future sessions)" — never "dispatched librarian in append mode".
+- **Plan turns:** no digest. Instead, if the researcher reported non-empty `GAPS`, end with a single `Open questions:` line listing them.
+- **Pure-question / conversational turns:** no digest at all.
+- **Escalations:** no digest — the escalation question is the ending. Same when a blocker is surfaced mid-flow.
 
 ## Memory write-back
 
-Whenever the session produces a durable fact, decision, or mistake, before final response spawn `librarian` with `mode: append` and the appropriate tier (`global` or `project`). One append call per fact. No narration.
+Whenever the session produces a durable fact, decision, or mistake, before final response spawn `librarian` with `mode: append` and the appropriate tier (`global` or `project`). One append call per fact. The append itself is silent — but each recorded item earns one `Learned:` line in the activity digest so the user knows what the system will remember.
 
 Append-worthy items:
 - A user preference stated in this session.

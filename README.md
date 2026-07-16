@@ -2,7 +2,7 @@
 
 A globally-installable, persistent, self-improving multi-agent system for Claude Code. Lives in `~/.claude/`, works across any session, on any project, on macOS and Windows.
 
-**Status:** phase 6 — complete. Full agent loop, two-tier memory, retrospective self-improvement, and per-invocation telemetry with a baseline-reporting CLI. See `plans/00-master-plan.md` for the full architecture and `plans/0N-*.md` for each phase.
+**Status:** phase 7 — complete. Full agent loop, two-tier memory, retrospective self-improvement, per-invocation telemetry with a baseline-reporting CLI, and a user-facing activity digest at the end of every worked turn. See `plans/00-master-plan.md` for the full architecture and `plans/0N-*.md` for each phase.
 
 ## Install
 
@@ -120,6 +120,29 @@ omsbudsman/
 └── uninstall.ps1
 ```
 
+## What you see after a worked turn
+
+The pipeline itself stays silent — no "dispatching the backend engineer…" narration. Instead, any turn that changed code ends with a compact digest of what actually happened:
+
+```
+---
+**What happened**
+- Changed: 3 files — api/orders.py (duplicate-submit guard); ui/Checkout.tsx (disable on submit); …
+- Tests: pytest tests/orders → 14 passed
+- Review: QA 3/3 steps pass, after 1 retry; audit: approve
+- Learned: this repo requires idempotency keys on all POST endpoints
+```
+
+Rules of the digest:
+
+- Capped at 7 lines; file lists collapse into counts when long.
+- Every line is traceable to an agent's structured return — nothing is invented.
+- Retries and QA failures that were fixed are shown, not hidden.
+- `Open:` (follow-ups, advisories) and `Learned:` (memory items recorded this session) appear only when non-empty.
+- Pure questions and conversational turns get no digest; plan requests end with an `Open questions:` line only when research surfaced gaps.
+
+See `plans/07-activity-digest.md` for the full design.
+
 ## Telemetry
 
 Every subagent return appends one JSONL record to `~/.claude/metrics/sessions.jsonl`; every Stop appends a per-session summary. The active file rotates to `sessions.<UTC>.jsonl.gz` once it exceeds 10 MB; the last 4 archives are retained.
@@ -155,3 +178,4 @@ To disable telemetry entirely, set `CLAUDE_MULTIAGENT_NO_METRICS=1` in your envi
 | 4. Engineers + QA + auditor | ✅ implemented | `plans/04-engineers-qa-auditor.md` |
 | 5. Retrospective + mistake learning | ✅ implemented | `plans/05-retrospective-mistake-learning.md` |
 | 6. Cost telemetry + tuning | ✅ implemented | `plans/06-cost-telemetry-tuning.md` |
+| 7. User-facing activity digest | ✅ implemented | `plans/07-activity-digest.md` |
