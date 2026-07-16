@@ -1,8 +1,15 @@
 # Mistakes Index — Project
 
-> Last updated: 2026-07-16 · Entries: 2
+> Last updated: 2026-07-16 · Entries: 3
 
 Tag → file map for project-specific prevention rules.
+
+## stale-branch-pr.md
+
+- `git` — Stale-branch PR creation
+- `pr-workflow` — Stale-branch PR creation
+- `stale-branch` — Stale-branch PR creation
+- `orchestrator` — Stale-branch PR creation
 
 ## windows-ci-encoding.md
 
