@@ -1,0 +1,98 @@
+{
+  "_comment": "Golden case manifest. Each assertion names a grader function in graders/deterministic.py with a severity: critical (any failure fails the case), gate (majority of trials), soft (informational), budget (fails only on cost regression with quality unchanged). judge=true cases additionally run graders/judge.md on quality dimensions.",
+  "cases": [
+    {
+      "id": "xs-question",
+      "class": "question",
+      "prompt": "ombudsman: Which function in this project computes the mean of a list, and which file is it in? Answer in one sentence.",
+      "expected_behavior": "Answers 'average' in calculator.py; at most the librarian plus one researcher dispatch; no file edits.",
+      "assertions": [
+        {"grader": "answer_mentions", "args": {"needles": ["average", "calculator.py"]}, "severity": "critical"},
+        {"grader": "max_task_dispatches", "args": {"n": 2}, "severity": "gate"},
+        {"grader": "no_file_changes", "severity": "critical"},
+        {"grader": "tokens_nonnull", "severity": "critical"}
+      ]
+    },
+    {
+      "id": "xs-trivial-edit",
+      "class": "trivial",
+      "prompt": "ombudsman: In README.md, the word 'deterministic' — make sure it is spelled correctly; fix it if not, and tell me the result.",
+      "expected_behavior": "Recognizes nothing needs changing (or makes the pinpointed fix) with at most 2 agent dispatches.",
+      "assertions": [
+        {"grader": "max_task_dispatches", "args": {"n": 3}, "severity": "gate"},
+        {"grader": "tokens_nonnull", "severity": "critical"}
+      ]
+    },
+    {
+      "id": "s-implement",
+      "class": "implement",
+      "prompt": "ombudsman: Add a function power(a, b) to calculator.py that returns a raised to b, with a unit test. Keep it minimal.",
+      "expected_behavior": "Implements power + test through engineer -> qa-reviewer -> auditor; gate state records QA and auditor verdicts; project tests pass.",
+      "assertions": [
+        {"grader": "file_contains", "args": {"path": "calculator.py", "needle": "def power"}, "severity": "critical"},
+        {"grader": "fixture_tests_pass", "severity": "critical"},
+        {"grader": "gate_state_complete", "severity": "gate"},
+        {"grader": "requires_task_dispatch", "args": {"agents": ["qa-reviewer"]}, "severity": "gate"},
+        {"grader": "tokens_nonnull", "severity": "critical"}
+      ]
+    },
+    {
+      "id": "plan-only",
+      "class": "plan",
+      "prompt": "ombudsman: How would we add a command-line interface to this calculator? Just give me the plan, don't implement anything.",
+      "expected_behavior": "Researcher -> planner; a PLAN reaches the user; no files change.",
+      "assertions": [
+        {"grader": "no_file_changes", "severity": "critical"},
+        {"grader": "answer_mentions", "args": {"needles": ["1."]}, "severity": "gate"},
+        {"grader": "tokens_nonnull", "severity": "critical"}
+      ]
+    },
+    {
+      "id": "correction-retro",
+      "class": "fix",
+      "prompt": "ombudsman: Your calculator crashes — average([]) raises ZeroDivisionError. That's a bug you shipped. Fix it and learn from this.",
+      "expected_behavior": "Fixes the seeded bug, runs the retrospective, and the librarian records a prevention rule in project memory.",
+      "assertions": [
+        {"grader": "fixture_tests_pass", "severity": "critical"},
+        {"grader": "seeded_bug_fixed", "severity": "critical"},
+        {"grader": "memory_rule_recorded", "severity": "gate"},
+        {"grader": "tokens_nonnull", "severity": "critical"}
+      ],
+      "judge": true
+    },
+    {
+      "id": "memory-recall",
+      "class": "question",
+      "prompt": "ombudsman: Before doing anything else: what prevention rules does this project's memory currently hold? List them.",
+      "expected_behavior": "Surfaces the seeded prevention rule from .ombudsman/memory without editing anything.",
+      "setup": {"seed_memory_rule": "Always guard divide() against a zero divisor before calling it."},
+      "assertions": [
+        {"grader": "answer_mentions", "args": {"needles": ["zero"]}, "severity": "critical"},
+        {"grader": "no_file_changes", "severity": "critical"},
+        {"grader": "tokens_nonnull", "severity": "critical"}
+      ]
+    },
+    {
+      "id": "offload-deterministic",
+      "class": "question",
+      "prompt": "ombudsman: How many lines, words, and estimated tokens are in calculator.py? Use the team's tooling, not estimation.",
+      "expected_behavior": "Invokes toolbelt/count.py instead of counting in-context.",
+      "assertions": [
+        {"grader": "toolbelt_invoked", "args": {"script": "count.py"}, "severity": "critical"},
+        {"grader": "no_file_changes", "severity": "critical"},
+        {"grader": "tokens_nonnull", "severity": "critical"}
+      ]
+    },
+    {
+      "id": "conversational",
+      "class": "conversational",
+      "prompt": "ombudsman: thanks, that's all for now",
+      "expected_behavior": "Replies directly; no engineer/planner dispatches beyond the librarian brief.",
+      "assertions": [
+        {"grader": "max_task_dispatches", "args": {"n": 1}, "severity": "gate"},
+        {"grader": "no_file_changes", "severity": "critical"},
+        {"grader": "tokens_nonnull", "severity": "critical"}
+      ]
+    }
+  ]
+}

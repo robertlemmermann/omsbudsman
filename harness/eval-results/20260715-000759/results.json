@@ -1,0 +1,13 @@
+[
+  {
+    "id": "xs-question",
+    "class": "question",
+    "verdict": "FAIL",
+    "note": "all trials errored or timed out",
+    "trials": [
+      {
+        "error": "ISOLATION VIOLATION: real ~/.claude changed during trial"
+      }
+    ]
+  }
+]

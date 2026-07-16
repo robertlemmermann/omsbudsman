@@ -1,0 +1,4 @@
+# Nothing under .claude/ is written at runtime (platform-protected);
+# writable data lives in .ombudsman/. Keep only tooling noise out.
+*.tmp
+__pycache__/
